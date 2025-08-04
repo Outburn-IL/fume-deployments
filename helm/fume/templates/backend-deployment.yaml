@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fume.fullname" . }}-backend
+  labels:
+    {{- include "fume.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  {{- if not .Values.autoscaling.backend.enabled }}
+  replicas: {{ .Values.backend.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "fume.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      labels:
+        {{- include "fume.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.image.pullSecret }}
+      {{- end }}
+      serviceAccountName: {{ include "fume.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: backend
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.backend.repository }}:{{ .Values.image.backend.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.backend.targetPort }}
+              protocol: TCP
+          {{- if .Values.probes.backend.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.backend.liveness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.backend.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.backend.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.backend.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.backend.liveness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.probes.backend.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.backend.readiness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.backend.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.backend.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.backend.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.backend.readiness.failureThreshold }}
+          {{- end }}
+          env:
+            {{- range $key, $value := .Values.env }}
+            {{- if $value }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "fume.fullname" . }}-config
+            - secretRef:
+                name: {{ .Values.secrets.fume }}
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          volumeMounts:
+            - name: logs
+              mountPath: /usr/fume/logs
+            - name: snapshots
+              mountPath: /usr/fume/snapshots
+            - name: templates
+              mountPath: /usr/fume/templates
+            - name: license
+              mountPath: /usr/fume
+              readOnly: true
+      volumes:
+        - name: logs
+          emptyDir: {}
+        - name: snapshots
+          persistentVolumeClaim:
+            claimName: {{ include "fume.fullname" . }}-snapshots
+        - name: templates
+          persistentVolumeClaim:
+            claimName: {{ include "fume.fullname" . }}-templates
+        - name: license
+          secret:
+            secretName: {{ .Values.secrets.license }}
+            items:
+              - key: license.key
+                path: FUME_Enterprise.lic
+      {{- with .Values.backend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

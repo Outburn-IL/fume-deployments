@@ -1,0 +1,13 @@
+{{- include "fume.validation" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "fume.fullname" . }}-config
+  labels:
+    {{- include "fume.labels" . | nindent 4 }}
+data:
+  {{- range $key, $value := .Values.configMap }}
+  {{- if $value }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
+  {{- end }}

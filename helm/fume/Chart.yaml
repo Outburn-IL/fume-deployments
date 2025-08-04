@@ -1,0 +1,13 @@
+apiVersion: v2
+name: fume
+description: A Helm chart for FUME application
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+maintainers:
+  - name: FUME Team
+keywords:
+  - fume
+  - fhir
+  - healthcare
+home: https://github.com/Outburn-IL/fume-deployments

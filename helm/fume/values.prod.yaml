@@ -1,0 +1,66 @@
+# Production override values for fume.
+# This file overrides the default values for production deployment.
+
+# Disable frontend in production
+enableFrontend: false
+
+# Backend configuration for production
+backend:
+  replicaCount: 3
+  
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+
+# Storage configuration for production
+storage:
+  snapshots:
+    size: 100Gi
+    storageClass: "ssd"
+  templates:
+    size: 5Gi
+    storageClass: "ssd"
+
+# Environment variables for production
+env:
+  FHIR_VERSION: "4.0.1"
+  FHIR_SERVER_AUTH_TYPE: "BASIC"
+  FUME_DESIGNER_HEADLINE: "FUME Designer - PRODUCTION"
+
+# ConfigMap data for production - override defaults and set required values
+configMap:
+  # CANONICAL_BASE_URL: "https://fhir.production.com"  # REQUIRED: Set during deployment
+  FHIR_PACKAGES: "il.core.fhir.r4,fhir.tx.support.r4,fume.outburn.r4"
+  # FUME_SERVER_URL: "https://fume-api.production.com"  # REQUIRED: Set during deployment
+
+# Auto-scaling enabled for production
+autoscaling:
+  backend:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 75
+
+# Ingress configuration for production
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    kubernetes.io/tls-acme: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+  hosts:
+    - host: fume.production.com
+      paths:
+        - path: /api
+          pathType: Prefix
+          service: backend
+  tls:
+    - secretName: fume-tls
+      hosts:
+        - fume.production.com

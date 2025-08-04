@@ -1,0 +1,101 @@
+{{- if .Values.enableFrontend }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fume.fullname" . }}-frontend
+  labels:
+    {{- include "fume.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  {{- if not .Values.autoscaling.frontend.enabled }}
+  replicas: {{ .Values.frontend.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "fume.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      labels:
+        {{- include "fume.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: frontend
+    spec:
+      {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.image.pullSecret }}
+      {{- end }}
+      serviceAccountName: {{ include "fume.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: frontend
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.frontend.repository }}:{{ .Values.image.frontend.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.frontend.targetPort }}
+              protocol: TCP
+          {{- if .Values.probes.frontend.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.frontend.liveness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.frontend.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.frontend.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.frontend.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.frontend.liveness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.probes.frontend.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.frontend.readiness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.frontend.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.frontend.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.frontend.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.frontend.readiness.failureThreshold }}
+          {{- end }}
+          env:
+            {{- range $key, $value := .Values.env }}
+            {{- if $value }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "fume.fullname" . }}-config
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}
+          volumeMounts:
+            - name: logs
+              mountPath: /usr/fume-designer/logs
+            - name: license
+              mountPath: /usr/fume-designer
+              readOnly: true
+      volumes:
+        - name: logs
+          emptyDir: {}
+        - name: license
+          secret:
+            secretName: {{ .Values.secrets.license }}
+            items:
+              - key: license.key
+                path: FUME_Enterprise.lic
+      {{- with .Values.frontend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.frontend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.frontend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

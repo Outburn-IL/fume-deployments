@@ -1,0 +1,19 @@
+{{- if .Values.enableFrontend }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fume.fullname" . }}-frontend
+  labels:
+    {{- include "fume.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  type: {{ .Values.service.frontend.type }}
+  ports:
+    - port: {{ .Values.service.frontend.port }}
+      targetPort: {{ .Values.service.frontend.targetPort }}
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "fume.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+{{- end }}
