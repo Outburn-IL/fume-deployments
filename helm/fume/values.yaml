@@ -126,9 +126,8 @@ env:
 # ConfigMap data (non-secret values)
 # Note: Required values must be provided during installation
 configMap:
-  # CANONICAL_BASE_URL: ""  # REQUIRED: Base URL for canonical URLs - set via --set configMap.CANONICAL_BASE_URL="https://your-fhir-server.com"
-  FHIR_PACKAGES: "il.core.fhir.r4,fhir.tx.support.r4,fume.outburn.r4"
-  
+  # CANONICAL_BASE_URL: ""  # REQUIRED: Base URL for canonical URLs - set via --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com"
+  # FHIR_PACKAGES: ""      # REQUIRED: Comma-separated package list (context-specific) - set via --set configMap.FHIR_PACKAGES="pkg1@x.y.z,pkg2,pkg3@a.b.c"
   # FUME_SERVER_URL: ""     # REQUIRED: URL for browser to access FUME engine - set via --set configMap.FUME_SERVER_URL="https://your-fume-api.com"
 
 # Liveness and readiness probes

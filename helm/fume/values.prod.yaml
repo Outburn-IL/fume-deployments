@@ -33,8 +33,8 @@ env:
 
 # ConfigMap data for production - override defaults and set required values
 configMap:
-  # CANONICAL_BASE_URL: "https://fhir.production.com"  # REQUIRED: Set during deployment
-  FHIR_PACKAGES: "il.core.fhir.r4,fhir.tx.support.r4,fume.outburn.r4"
+  # CANONICAL_BASE_URL: "https://fume.your-company.com"  # REQUIRED: Set during deployment
+  # FHIR_PACKAGES: ""                                   # REQUIRED: Comma-separated list (org/jurisdiction specific)
   # FUME_SERVER_URL: "https://fume-api.production.com"  # REQUIRED: Set during deployment
 
 # Auto-scaling enabled for production
