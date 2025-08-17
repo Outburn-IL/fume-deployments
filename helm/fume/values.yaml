@@ -13,10 +13,10 @@ enableFrontend: true
 image:
   backend:
     repository: outburnltd/fume-enterprise-server
-    tag: "latest"
+    tag: "1.7.1"
   frontend:
     repository: outburnltd/fume-designer
-    tag: "latest"
+    tag: "2.1.3"
   pullPolicy: IfNotPresent
   pullSecret: "dockerhub-secret"  # Required for private Docker Hub images
 
