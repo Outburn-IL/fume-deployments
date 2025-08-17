@@ -105,8 +105,8 @@ serviceAccount:
 
 # Secrets (referenced by name, not created by this chart)
 secrets:
-  fume: "fume-secrets"  # Name of the secret containing sensitive config
-  license: "fume-license"  # Name of the secret containing license.key
+  fume: "fume-secrets"  # Name of the secret containing sensitive config (e.g., FHIR_SERVER_BASE; if BASIC auth: FHIR_SERVER_UN/FHIR_SERVER_PW)
+  license: "fume-license"  # Name of the secret containing the license file; must include key: license.key.lic (must end with .lic)
 
 # Environment variables
 env:
@@ -126,9 +126,9 @@ env:
 # ConfigMap data (non-secret values)
 # Note: Required values must be provided during installation
 configMap:
-  # CANONICAL_BASE_URL: ""  # REQUIRED: Base URL for canonical URLs - set via --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com"
+  # CANONICAL_BASE_URL: ""  # REQUIRED: Unique canonical identifier (typically FQDN) used in FHIR resources, e.g., https://fhir.company.com.
   # FHIR_PACKAGES: ""      # REQUIRED: Comma-separated package list (context-specific) - set via --set configMap.FHIR_PACKAGES="pkg1@x.y.z,pkg2,pkg3@a.b.c"
-  # FUME_SERVER_URL: ""     # REQUIRED: URL for browser to access FUME engine - set via --set configMap.FUME_SERVER_URL="https://your-fume-api.com"
+  # FUME_SERVER_URL: ""     # REQUIRED: Browser-facing URL to the backend; must be reachable from the user's network.
 
 # Liveness and readiness probes
 probes:
