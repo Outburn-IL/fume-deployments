@@ -2,7 +2,7 @@
 Validate required configuration values
 */}}
 {{- if not .Values.configMap.CANONICAL_BASE_URL }}
-{{- fail "CANONICAL_BASE_URL is required. Please set it via --set configMap.CANONICAL_BASE_URL=\"https://your-fhir-server.com\"" }}
+{{- fail "CANONICAL_BASE_URL is required. Please set it via --set configMap.CANONICAL_BASE_URL=\"https://fume.your-company.com\"" }}
 {{- end }}
 
 {{- if not .Values.configMap.FUME_SERVER_URL }}
