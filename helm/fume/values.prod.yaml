@@ -4,6 +4,13 @@
 # Disable frontend in production
 enableFrontend: false
 
+# Image pull secret (optional)
+# If your cluster/namespace/service account does not already provide credentials to pull
+# private images from Docker Hub, set the secret name here. Otherwise leave it unset
+# and rely on cluster/namespace/service account level imagePullSecrets.
+# image:
+#   pullSecret: "dockerhub-secret"
+
 # Backend configuration for production
 backend:
   replicaCount: 3
@@ -33,8 +40,8 @@ env:
 
 # ConfigMap data for production - override defaults and set required values
 configMap:
-  # CANONICAL_BASE_URL: "https://fhir.production.com"  # REQUIRED: Set during deployment
-  FHIR_PACKAGES: "il.core.fhir.r4,fhir.tx.support.r4,fume.outburn.r4"
+  # CANONICAL_BASE_URL: "https://fume.your-company.com"  # REQUIRED: Set during deployment
+  # FHIR_PACKAGES: ""                                   # REQUIRED: Comma-separated list (org/jurisdiction specific)
   # FUME_SERVER_URL: "https://fume-api.production.com"  # REQUIRED: Set during deployment
 
 # Auto-scaling enabled for production

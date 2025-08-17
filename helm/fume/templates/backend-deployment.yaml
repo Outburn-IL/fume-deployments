@@ -5,6 +5,9 @@ metadata:
   labels:
     {{- include "fume.labels" . | nindent 4 }}
     app.kubernetes.io/component: backend
+    fume.outburn.dev/image: "{{ .Values.image.backend.repository }}:{{ .Values.image.backend.tag | default .Chart.AppVersion }}"
+    fume.outburn.dev/tag: "{{ .Values.image.backend.tag | default .Chart.AppVersion }}"
+    app.kubernetes.io/component-version: "{{ .Values.image.backend.tag | default .Chart.AppVersion }}"
 spec:
   {{- if not .Values.autoscaling.backend.enabled }}
   replicas: {{ .Values.backend.replicaCount }}
@@ -20,6 +23,9 @@ spec:
       labels:
         {{- include "fume.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: backend
+        fume.outburn.dev/image: "{{ .Values.image.backend.repository }}:{{ .Values.image.backend.tag | default .Chart.AppVersion }}"
+        fume.outburn.dev/tag: "{{ .Values.image.backend.tag | default .Chart.AppVersion }}"
+        app.kubernetes.io/component-version: "{{ .Values.image.backend.tag | default .Chart.AppVersion }}"
     spec:
       {{- if .Values.image.pullSecret }}
       imagePullSecrets:
@@ -79,8 +85,10 @@ spec:
               mountPath: /usr/fume/snapshots
             - name: templates
               mountPath: /usr/fume/templates
+            # Mount license as a single file
             - name: license
-              mountPath: /usr/fume
+              mountPath: /usr/fume/license.key.lic
+              subPath: license.key.lic
               readOnly: true
       volumes:
         - name: logs
@@ -95,8 +103,8 @@ spec:
           secret:
             secretName: {{ .Values.secrets.license }}
             items:
-              - key: license.key
-                path: FUME_Enterprise.lic
+              - key: license.key.lic
+                path: license.key.lic
       {{- with .Values.backend.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

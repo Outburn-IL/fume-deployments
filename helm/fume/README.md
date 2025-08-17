@@ -33,19 +33,20 @@ Create the required secrets and ConfigMaps before deploying:
 # Create namespace (optional)
 kubectl create namespace fume
 
-# Create Docker Hub pull secret (REQUIRED - images are private)
+# (Optional) Create Docker Hub pull secret. Only needed if your cluster/namespace/service account
+# does not already provide credentials to pull private images from Docker Hub.
 kubectl create secret docker-registry dockerhub-secret \
   --docker-server=docker.io \
   --docker-username=outburnltd \
-  --docker-password=YOUR_OUTBURN_DOCKERHUB_TOKEN \
+  --docker-password=YOUR_DOCKERHUB_API_TOKEN \
   --namespace fume
 
-# Create the license secret (same file used for both backend and frontend)
+# License secret (mounts only the .lic file via subPath to avoid overlaying app dirs)
 kubectl create secret generic fume-license \
-  --from-file=license.key=./path/to/FUME_Enterprise.lic \
+  --from-file=license.key.lic=./path/to/license.key.lic \
   --namespace fume
 
-# Create application secrets (customize with your values)
+# Application secrets (customize with your values)
 kubectl create secret generic fume-secrets \
   --from-literal=FHIR_SERVER_BASE="https://your-fhir-server.com/fhir" \
   --from-literal=FHIR_SERVER_UN="your-fhir-username" \
@@ -55,45 +56,51 @@ kubectl create secret generic fume-secrets \
 
 ### 2. Deploy with Default Settings
 
-**Important**: You must provide required configuration values during deployment.
+Important: You must provide required configuration values during deployment.
 
 ```bash
 # Deploy with frontend enabled (development/testing)
 helm install fume ./helm/fume \
   --namespace fume \
-  --set configMap.CANONICAL_BASE_URL="https://your-fhir-server.com" \
-  --set configMap.FUME_SERVER_URL="https://your-fume-api.com"
+  --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
+  --set configMap.FUME_SERVER_URL="https://your-fume-api.com" \
+  --set configMap.FHIR_PACKAGES="<org-specific-packages>"
 
 # Deploy for production (frontend disabled)
 helm install fume ./helm/fume \
   -f ./helm/fume/values.prod.yaml \
   --namespace fume \
-  --set configMap.CANONICAL_BASE_URL="https://your-fhir-server.com" \
-  --set configMap.FUME_SERVER_URL="https://your-fume-api.com"
+  --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
+  --set configMap.FUME_SERVER_URL="https://your-fume-api.com" \
+  --set configMap.FHIR_PACKAGES="<org-specific-packages>"
 ```
 
 ## Configuration
 
 ### Image Configuration
 
-Update the image settings in `values.yaml` or via command line:
+Update the image settings in `values.yaml` (or override in `values.prod.yaml`) or via command line:
 
 ```yaml
 image:
   backend:
     repository: outburnltd/fume-enterprise-server  # Private Docker Hub repository
-    tag: "latest"
+    tag: "1.7.1"
   frontend:
     repository: outburnltd/fume-designer           # Private Docker Hub repository  
-    tag: "latest"
+    tag: "2.1.3"
   pullPolicy: IfNotPresent
-  pullSecret: "dockerhub-secret"  # REQUIRED: Docker Hub credentials
+  pullSecret: "dockerhub-secret"  # Optional: set if your cluster/namespace doesn't already provide pull credentials
 ```
 
-**Important**: The FUME images are hosted as private repositories on Docker Hub. You must:
-1. Receive Docker Hub API token from Outburn via secure channel
-2. Create the `dockerhub-secret` as shown in the setup section
-3. Ensure the secret name matches the `image.pullSecret` value
+Important: The FUME images are hosted as private repositories on Docker Hub. Ensure your cluster can pull them by either:
+- Preconfiguring image pull credentials at the namespace/service account or cluster level (e.g., imagePullSecrets on the default ServiceAccount), or
+- Setting `image.pullSecret` and creating the secret as shown below.
+
+Notes:
+- Username is always `outburnltd` (fixed)
+- Password is the Docker Hub API token you'll receive from Outburn via secure channel
+- Avoid using the `latest` tag; pin a specific version or digest
 
 ### Enable/Disable Frontend
 
@@ -143,12 +150,12 @@ frontend:
 
 ## Secrets and License Setup
 
-### Required Secrets
+### Secrets and Image Pull Access
 
-The chart expects three secrets to be created externally:
+The chart expects the following to exist (some created externally):
 
-#### 1. Docker Hub Pull Secret (`dockerhub-secret`)
-**REQUIRED**: FUME images are private on Docker Hub:
+#### 1. Docker Hub Pull Secret (`dockerhub-secret`) — Optional
+Only needed if your cluster/namespace/service account does not already provide credentials to pull the private images.
 
 ```bash
 kubectl create secret docker-registry dockerhub-secret \
@@ -158,22 +165,23 @@ kubectl create secret docker-registry dockerhub-secret \
   --namespace fume
 ```
 
-**Note**: 
+Notes:
 - Username is always `outburnltd` (fixed)
 - Password is the Docker Hub API token you'll receive from Outburn via secure channel
+- Set the secret name in `image.pullSecret` if you create it
 
-#### 2. License Secret (`fume-license`)
+#### 2. License Secret (`fume-license`) — Required
 Contains the FUME Enterprise license file (same file for both backend and frontend):
 
 ```bash
 kubectl create secret generic fume-license \
-  --from-file=license.key=./FUME_Enterprise.lic \
+  --from-file=license.key.lic=./FUME_Enterprise.lic \
   --namespace fume
 ```
 
 *Note: FUME automatically scans for `*.lic` files in the root directory, so the exact filename doesn't matter as long as it has a `.lic` extension.*
 
-#### 3. Application Secrets (`fume-secrets`)
+#### 3. Application Secrets (`fume-secrets`) — Required
 Contains sensitive FHIR server configuration:
 
 ```bash
@@ -184,9 +192,9 @@ kubectl create secret generic fume-secrets \
   --namespace fume
 ```
 
-### Custom Secret Names
+### image.pullSecret
 
-If you need to use different secret names, update `values.yaml`:
+Optional; only required if your cluster doesn’t already have access.
 
 ```yaml
 secrets:
@@ -234,12 +242,13 @@ Common storage class examples:
 # Use default values with frontend enabled
 helm install fume-dev ./helm/fume \
   --namespace fume-dev \
-  --set image.backend.tag=latest \
-  --set image.frontend.tag=latest \
+  --set image.backend.tag=1.7.1 \
+  --set image.frontend.tag=2.1.3 \
   --set storage.snapshots.size=5Gi \
   --set env.FUME_DESIGNER_HEADLINE="FUME Designer - DEV" \
   --set configMap.FUME_SERVER_URL="http://localhost:42420" \
-  --set configMap.CANONICAL_BASE_URL="https://fhir-dev.company.com"
+  --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
+  --set configMap.FHIR_PACKAGES="<org-specific-packages>"
 ```
 
 ### Test Environment
@@ -248,13 +257,14 @@ helm install fume-dev ./helm/fume \
 # Custom values for testing
 helm install fume-test ./helm/fume \
   --namespace fume-test \
-  --set image.backend.tag=latest \
-  --set image.frontend.tag=latest \
+  --set image.backend.tag=1.7.1 \
+  --set image.frontend.tag=2.1.3 \
   --set backend.replicaCount=2 \
   --set enableFrontend=true \
   --set env.FUME_DESIGNER_HEADLINE="FUME Designer - TEST" \
   --set configMap.FUME_SERVER_URL="https://fume-api-test.company.com" \
-  --set configMap.CANONICAL_BASE_URL="https://fhir-test.company.com" \
+  --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
+  --set configMap.FHIR_PACKAGES="<org-specific-packages>" \
   --set env.FHIR_SERVER_AUTH_TYPE="BASIC"
 ```
 
@@ -265,10 +275,11 @@ helm install fume-test ./helm/fume \
 helm install fume-prod ./helm/fume \
   -f ./helm/fume/values.prod.yaml \
   --namespace fume-prod \
-  --set image.backend.tag=latest \
-  --set image.frontend.tag=latest \
+  --set image.backend.tag=1.7.1 \
+  --set image.frontend.tag=2.1.3 \
   --set configMap.FUME_SERVER_URL="https://fume-api.company.com" \
-  --set configMap.CANONICAL_BASE_URL="https://fhir.company.com"
+  --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
+  --set configMap.FHIR_PACKAGES="<org-specific-packages>"
 ```
 
 ### FHIR Server Integration Examples
@@ -297,7 +308,7 @@ env:
 
 #### Backend (FUME Engine) Configuration
 
-Non-secret environment variables in `values.yaml`:
+Non-secret environment variables (in `values.yaml`; override in `values.prod.yaml`):
 ```yaml
 env:
   SERVER_PORT: "42420"           # Port the engine exposes (default: 42420)
@@ -308,8 +319,8 @@ env:
 **Required ConfigMap values** (must be provided during deployment):
 ```bash
 # These values MUST be set when installing the chart
---set configMap.CANONICAL_BASE_URL="https://fhir.company.com" \
---set configMap.FHIR_PACKAGES="il.core.fhir.r4@0.17.5,fhir.tx.support.r4,fume.outburn.r4@0.1.0"
+--set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
+--set configMap.FHIR_PACKAGES="<org-specific-packages>"
 ```
 
 Secret environment variables (in `fume-secrets`):
@@ -323,7 +334,7 @@ kubectl create secret generic fume-secrets \
 
 #### Frontend (FUME Designer) Configuration
 
-Non-secret environment variables in `values.yaml`:
+Non-secret environment variables (in `values.yaml`; override in `values.prod.yaml`):
 ```yaml
 env:
   FUME_DESIGNER_HEADLINE: "FUME Designer - DEV"  # Page title/environment indicator
@@ -342,19 +353,47 @@ env:
 
 #### FHIR Packages Configuration
 
-FUME can install specific FHIR packages on startup. Configure via ConfigMap:
+FUME installs specific FHIR packages on startup. You must supply the package list for your context (organization/jurisdiction specific). Examples:
 
 ```yaml
 configMap:
-  FHIR_PACKAGES: "il.core.fhir.r4,fhir.tx.support.r4,fume.outburn.r4"
+  FHIR_PACKAGES: "us.core.r4@6.1.0,fhir.tx.support.r4,hl7.fhir.us.mcode@2.1.0"
+# or
+configMap:
+  FHIR_PACKAGES: "il.core.fhir.r4@0.17.5,fhir.tx.support.r4,fume.outburn.r4@0.1.0"
 ```
 
-Common FHIR packages:
-- `il.core.fhir.r4` - Israeli Core FHIR profiles
-- `fhir.tx.support.r4` - Terminology support
-- `fume.outburn.r4` - FUME-specific extensions
-- `us.core` - US Core profiles
-- `hl7.fhir.us.mcode` - Minimal Common Oncology Data Elements
+Notes:
+- Provide a comma-separated list. Versions are optional but recommended (pkg@version).
+- Leave it unset to fail fast with a clear validation error.
+
+
+### Version tracking labels
+
+The chart adds labels that allow tracking what is deployed:
+- helm.sh/chart: <chart>-<version>
+- app.kubernetes.io/version: Chart appVersion (backend release)
+- app.kubernetes.io/component: backend | frontend
+- app.kubernetes.io/component-version: container image tag for the component
+- fume.outburn.dev/image: full image reference (repo:tag)
+- fume.outburn.dev/tag: container image tag
+- app.kubernetes.io/name, app.kubernetes.io/instance, app.kubernetes.io/managed-by
+
+Examples to query deployed versions:
+
+```bash
+# Backend image and tag (Deployment labels)
+kubectl -n fume get deploy fume-backend \
+  -o jsonpath='{.metadata.labels.fume\.outburn\.dev/image}{"\n"}{.metadata.labels.app\.kubernetes\.io/component-version}{"\n"}'
+
+# Frontend image and tag (Deployment labels)
+kubectl -n fume get deploy fume-frontend \
+  -o jsonpath='{.metadata.labels.fume\.outburn\.dev/image}{"\n"}{.metadata.labels.app\.kubernetes\.io/component-version}{"\n"}'
+
+# List pods with component and image labels
+kubectl -n fume get pods -l app.kubernetes.io/name=fume \
+  -o custom-columns=NAME:.metadata.name,COMPONENT:.metadata.labels.app\.kubernetes\.io/component,IMAGE:.metadata.labels.fume\.outburn\.dev/image,TAG:.metadata.labels.app\.kubernetes\.io/component-version
+```
 
 #### License File Handling
 
@@ -444,8 +483,8 @@ probes:
 # Upgrade with new image version
 helm upgrade fume ./helm/fume \
   --namespace fume \
-  --set image.backend.tag=latest \
-  --set image.frontend.tag=latest
+  --set image.backend.tag=1.7.2 \
+  --set image.frontend.tag=2.1.4
 
 # Upgrade with new values file
 helm upgrade fume ./helm/fume \
@@ -508,18 +547,21 @@ kubectl port-forward svc/fume-frontend 3000:3000 --namespace fume
 
 #### 4. Image Pull Issues
 ```bash
-# Check if Docker Hub secret is configured and valid
+# Check if Docker Hub secret is configured and valid (if you created one)
 kubectl get secret dockerhub-secret --namespace fume
 kubectl describe secret dockerhub-secret --namespace fume
 
-# Verify secret is properly referenced in deployment
+# Verify secret is properly referenced in deployment (if using image.pullSecret)
 kubectl describe deployment fume-backend --namespace fume | grep -A5 "Image Pull Secrets"
+
+# If relying on namespace/service account level credentials, check imagePullSecrets there
+kubectl get serviceaccount default -n fume -o yaml | grep -A3 imagePullSecrets
 
 # Check pod events for image pull errors
 kubectl describe pod -l app.kubernetes.io/name=fume --namespace fume
 
 # Test Docker Hub connectivity (replace with actual image)
-kubectl run test-pull --image=outburnltd/fume-enterprise-server:latest --image-pull-policy=Always --rm -it --restart=Never --namespace fume
+kubectl run test-pull --image=outburnltd/fume-enterprise-server:1.7.1 --image-pull-policy=Always --rm -it --restart=Never --namespace fume
 ```
 
 ### Logs
@@ -556,7 +598,9 @@ helm uninstall fume --namespace fume
 kubectl delete pvc --all --namespace fume
 
 # Remove secrets (if no longer needed)
-kubectl delete secret fume-license fume-secrets dockerhub-secret --namespace fume
+kubectl delete secret fume-license fume-secrets --namespace fume
+# If you created a Docker Hub pull secret for this namespace, remove it as well
+kubectl delete secret dockerhub-secret --namespace fume
 
 # Remove namespace (optional)
 kubectl delete namespace fume
@@ -571,8 +615,8 @@ For issues related to:
 
 ## Chart Information
 
-- **Chart Version**: 0.1.0
-- **App Version**: 1.0.0
+- **Chart Version**: 0.1.1
+- **App Version**: 1.7.1
 - **Kubernetes Version**: 1.19+
 - **Helm Version**: 3.2.0+
 

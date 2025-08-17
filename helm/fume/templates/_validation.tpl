@@ -1,22 +1,5 @@
 {{/*
-Validate required configuration values
+Validation is consolidated in the helper template.
+This file now simply invokes the shared validation to retain compatibility if referenced directly.
 */}}
-{{- if not .Values.configMap.CANONICAL_BASE_URL }}
-{{- fail "CANONICAL_BASE_URL is required. Please set it via --set configMap.CANONICAL_BASE_URL=\"https://your-fhir-server.com\"" }}
-{{- end }}
-
-{{- if not .Values.configMap.FUME_SERVER_URL }}
-{{- fail "FUME_SERVER_URL is required. Please set it via --set configMap.FUME_SERVER_URL=\"https://your-fume-api.com\"" }}
-{{- end }}
-
-{{- if not .Values.secrets.fume }}
-{{- fail "Application secrets name is required. Please ensure you have created the 'fume-secrets' secret or update values.yaml" }}
-{{- end }}
-
-{{- if not .Values.secrets.license }}
-{{- fail "License secret name is required. Please ensure you have created the 'fume-license' secret or update values.yaml" }}
-{{- end }}
-
-{{- if not .Values.image.pullSecret }}
-{{- fail "Docker Hub pull secret is required. Please create 'dockerhub-secret' or update image.pullSecret in values.yaml" }}
-{{- end }}
+{{- include "fume.validation" . -}}
