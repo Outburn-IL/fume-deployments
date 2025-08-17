@@ -62,14 +62,16 @@ kubectl create secret generic fume-secrets \
 helm install fume ./helm/fume \
   --namespace fume \
   --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
-  --set configMap.FUME_SERVER_URL="https://your-fume-api.com"
+  --set configMap.FUME_SERVER_URL="https://your-fume-api.com" \
+  --set configMap.FHIR_PACKAGES="<org-specific-packages>"
 
 # Deploy for production (frontend disabled)
 helm install fume ./helm/fume \
   -f ./helm/fume/values.prod.yaml \
   --namespace fume \
   --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
-  --set configMap.FUME_SERVER_URL="https://your-fume-api.com"
+  --set configMap.FUME_SERVER_URL="https://your-fume-api.com" \
+  --set configMap.FHIR_PACKAGES="<org-specific-packages>"
 ```
 
 ## Configuration
@@ -257,6 +259,7 @@ helm install fume-test ./helm/fume \
   --set env.FUME_DESIGNER_HEADLINE="FUME Designer - TEST" \
   --set configMap.FUME_SERVER_URL="https://fume-api-test.company.com" \
   --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
+  --set configMap.FHIR_PACKAGES="<org-specific-packages>" \
   --set env.FHIR_SERVER_AUTH_TYPE="BASIC"
 ```
 
@@ -312,7 +315,7 @@ env:
 ```bash
 # These values MUST be set when installing the chart
 --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
---set configMap.FHIR_PACKAGES="il.core.fhir.r4@0.17.5,fhir.tx.support.r4,fume.outburn.r4@0.1.0"
+--set configMap.FHIR_PACKAGES="<org-specific-packages>"
 ```
 
 Secret environment variables (in `fume-secrets`):
@@ -345,19 +348,20 @@ env:
 
 #### FHIR Packages Configuration
 
-FUME can install specific FHIR packages on startup. Configure via ConfigMap:
+FUME installs specific FHIR packages on startup. You must supply the package list for your context (organization/jurisdiction specific). Examples:
 
 ```yaml
 configMap:
-  FHIR_PACKAGES: "il.core.fhir.r4,fhir.tx.support.r4,fume.outburn.r4"
+  FHIR_PACKAGES: "us.core.r4@6.1.0,fhir.tx.support.r4,hl7.fhir.us.mcode@2.1.0"
+# or
+configMap:
+  FHIR_PACKAGES: "il.core.fhir.r4@0.17.5,fhir.tx.support.r4,fume.outburn.r4@0.1.0"
 ```
 
-Common FHIR packages:
-- `il.core.fhir.r4` - Israeli Core FHIR profiles
-- `fhir.tx.support.r4` - Terminology support
-- `fume.outburn.r4` - FUME-specific extensions
-- `us.core` - US Core profiles
-- `hl7.fhir.us.mcode` - Minimal Common Oncology Data Elements
+Notes:
+- Provide a comma-separated list. Versions are optional but recommended (pkg@version).
+- Leave it unset to fail fast with a clear validation error.
+
 
 ### Version tracking labels
 
