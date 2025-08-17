@@ -16,7 +16,3 @@ Validate required configuration values
 {{- if not .Values.secrets.license }}
 {{- fail "License secret name is required. Please ensure you have created the 'fume-license' secret or update values.yaml" }}
 {{- end }}
-
-{{- if not .Values.image.pullSecret }}
-{{- fail "Docker Hub pull secret is required. Please create 'dockerhub-secret' or update image.pullSecret in values.yaml" }}
-{{- end }}
