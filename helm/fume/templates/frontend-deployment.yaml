@@ -80,8 +80,10 @@ spec:
           volumeMounts:
             - name: logs
               mountPath: /usr/fume-designer/logs
+            # Mount license as a single file to avoid overlaying the app dir
             - name: license
-              mountPath: /usr/fume-designer
+              mountPath: /usr/fume-designer/license.key.lic
+              subPath: license.key.lic
               readOnly: true
       volumes:
         - name: logs
@@ -90,8 +92,8 @@ spec:
           secret:
             secretName: {{ .Values.secrets.license }}
             items:
-              - key: license.key
-                path: FUME_Enterprise.lic
+              - key: license.key.lic
+                path: license.key.lic
       {{- with .Values.frontend.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

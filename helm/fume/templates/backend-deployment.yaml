@@ -85,8 +85,10 @@ spec:
               mountPath: /usr/fume/snapshots
             - name: templates
               mountPath: /usr/fume/templates
+            # Mount license as a single file
             - name: license
-              mountPath: /usr/fume
+              mountPath: /usr/fume/license.key.lic
+              subPath: license.key.lic
               readOnly: true
       volumes:
         - name: logs
@@ -101,8 +103,8 @@ spec:
           secret:
             secretName: {{ .Values.secrets.license }}
             items:
-              - key: license.key
-                path: FUME_Enterprise.lic
+              - key: license.key.lic
+                path: license.key.lic
       {{- with .Values.backend.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
