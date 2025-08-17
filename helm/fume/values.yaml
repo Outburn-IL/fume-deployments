@@ -18,7 +18,7 @@ image:
     repository: outburnltd/fume-designer
     tag: "2.1.3"
   pullPolicy: IfNotPresent
-  pullSecret: "dockerhub-secret"  # Required for private Docker Hub images
+  pullSecret: ""  # Optional: set to a Secret name only if namespace/service account doesn't already provide pull access
 
 # Backend configuration
 backend:

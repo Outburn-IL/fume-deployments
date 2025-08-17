@@ -4,6 +4,13 @@
 # Disable frontend in production
 enableFrontend: false
 
+# Image pull secret (optional)
+# If your cluster/namespace/service account does not already provide credentials to pull
+# private images from Docker Hub, set the secret name here. Otherwise leave it unset
+# and rely on cluster/namespace/service account level imagePullSecrets.
+# image:
+#   pullSecret: "dockerhub-secret"
+
 # Backend configuration for production
 backend:
   replicaCount: 3
