@@ -82,10 +82,10 @@ Update the image settings in `values.yaml` or via command line:
 image:
   backend:
     repository: outburnltd/fume-enterprise-server  # Private Docker Hub repository
-    tag: "latest"
+    tag: "1.7.1"
   frontend:
     repository: outburnltd/fume-designer           # Private Docker Hub repository  
-    tag: "latest"
+    tag: "2.1.3"
   pullPolicy: IfNotPresent
   pullSecret: "dockerhub-secret"  # REQUIRED: Docker Hub credentials
 ```
@@ -94,6 +94,7 @@ image:
 1. Receive Docker Hub API token from Outburn via secure channel
 2. Create the `dockerhub-secret` as shown in the setup section
 3. Ensure the secret name matches the `image.pullSecret` value
+4. Avoid using the `latest` tag; pin a specific version or digest
 
 ### Enable/Disable Frontend
 
@@ -234,8 +235,8 @@ Common storage class examples:
 # Use default values with frontend enabled
 helm install fume-dev ./helm/fume \
   --namespace fume-dev \
-  --set image.backend.tag=latest \
-  --set image.frontend.tag=latest \
+  --set image.backend.tag=1.7.1 \
+  --set image.frontend.tag=2.1.3 \
   --set storage.snapshots.size=5Gi \
   --set env.FUME_DESIGNER_HEADLINE="FUME Designer - DEV" \
   --set configMap.FUME_SERVER_URL="http://localhost:42420" \
@@ -248,8 +249,8 @@ helm install fume-dev ./helm/fume \
 # Custom values for testing
 helm install fume-test ./helm/fume \
   --namespace fume-test \
-  --set image.backend.tag=latest \
-  --set image.frontend.tag=latest \
+  --set image.backend.tag=1.7.1 \
+  --set image.frontend.tag=2.1.3 \
   --set backend.replicaCount=2 \
   --set enableFrontend=true \
   --set env.FUME_DESIGNER_HEADLINE="FUME Designer - TEST" \
@@ -265,8 +266,8 @@ helm install fume-test ./helm/fume \
 helm install fume-prod ./helm/fume \
   -f ./helm/fume/values.prod.yaml \
   --namespace fume-prod \
-  --set image.backend.tag=latest \
-  --set image.frontend.tag=latest \
+  --set image.backend.tag=1.7.1 \
+  --set image.frontend.tag=2.1.3 \
   --set configMap.FUME_SERVER_URL="https://fume-api.company.com" \
   --set configMap.CANONICAL_BASE_URL="https://fhir.company.com"
 ```
@@ -444,8 +445,8 @@ probes:
 # Upgrade with new image version
 helm upgrade fume ./helm/fume \
   --namespace fume \
-  --set image.backend.tag=latest \
-  --set image.frontend.tag=latest
+  --set image.backend.tag=1.7.2 \
+  --set image.frontend.tag=2.1.4
 
 # Upgrade with new values file
 helm upgrade fume ./helm/fume \
@@ -519,7 +520,7 @@ kubectl describe deployment fume-backend --namespace fume | grep -A5 "Image Pull
 kubectl describe pod -l app.kubernetes.io/name=fume --namespace fume
 
 # Test Docker Hub connectivity (replace with actual image)
-kubectl run test-pull --image=outburnltd/fume-enterprise-server:latest --image-pull-policy=Always --rm -it --restart=Never --namespace fume
+kubectl run test-pull --image=outburnltd/fume-enterprise-server:1.7.1 --image-pull-policy=Always --rm -it --restart=Never --namespace fume
 ```
 
 ### Logs
@@ -571,8 +572,8 @@ For issues related to:
 
 ## Chart Information
 
-- **Chart Version**: 0.1.0
-- **App Version**: 1.0.0
+- **Chart Version**: 0.1.1
+- **App Version**: 1.7.1
 - **Kubernetes Version**: 1.19+
 - **Helm Version**: 3.2.0+
 
