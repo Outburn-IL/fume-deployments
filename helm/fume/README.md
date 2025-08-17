@@ -61,14 +61,14 @@ kubectl create secret generic fume-secrets \
 # Deploy with frontend enabled (development/testing)
 helm install fume ./helm/fume \
   --namespace fume \
-  --set configMap.CANONICAL_BASE_URL="https://your-fhir-server.com" \
+  --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
   --set configMap.FUME_SERVER_URL="https://your-fume-api.com"
 
 # Deploy for production (frontend disabled)
 helm install fume ./helm/fume \
   -f ./helm/fume/values.prod.yaml \
   --namespace fume \
-  --set configMap.CANONICAL_BASE_URL="https://your-fhir-server.com" \
+  --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
   --set configMap.FUME_SERVER_URL="https://your-fume-api.com"
 ```
 
@@ -240,7 +240,8 @@ helm install fume-dev ./helm/fume \
   --set storage.snapshots.size=5Gi \
   --set env.FUME_DESIGNER_HEADLINE="FUME Designer - DEV" \
   --set configMap.FUME_SERVER_URL="http://localhost:42420" \
-  --set configMap.CANONICAL_BASE_URL="https://fhir-dev.company.com"
+  --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
+  --set configMap.FHIR_PACKAGES="<org-specific-packages>"
 ```
 
 ### Test Environment
@@ -255,7 +256,7 @@ helm install fume-test ./helm/fume \
   --set enableFrontend=true \
   --set env.FUME_DESIGNER_HEADLINE="FUME Designer - TEST" \
   --set configMap.FUME_SERVER_URL="https://fume-api-test.company.com" \
-  --set configMap.CANONICAL_BASE_URL="https://fhir-test.company.com" \
+  --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
   --set env.FHIR_SERVER_AUTH_TYPE="BASIC"
 ```
 
@@ -269,7 +270,8 @@ helm install fume-prod ./helm/fume \
   --set image.backend.tag=1.7.1 \
   --set image.frontend.tag=2.1.3 \
   --set configMap.FUME_SERVER_URL="https://fume-api.company.com" \
-  --set configMap.CANONICAL_BASE_URL="https://fhir.company.com"
+  --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
+  --set configMap.FHIR_PACKAGES="<org-specific-packages>"
 ```
 
 ### FHIR Server Integration Examples
@@ -309,7 +311,7 @@ env:
 **Required ConfigMap values** (must be provided during deployment):
 ```bash
 # These values MUST be set when installing the chart
---set configMap.CANONICAL_BASE_URL="https://fhir.company.com" \
+--set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
 --set configMap.FHIR_PACKAGES="il.core.fhir.r4@0.17.5,fhir.tx.support.r4,fume.outburn.r4@0.1.0"
 ```
 
