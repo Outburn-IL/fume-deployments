@@ -1,0 +1,62 @@
+name: Helm chart validation
+
+on:
+  pull_request:
+    paths:
+      - 'helm/fume/**'
+      - '.github/workflows/helm-validate.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect chart changes and enforce version bump
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHART_DIR=helm/fume
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          echo "Base SHA: $BASE_SHA"
+          CHANGED=$(git diff --name-only "$BASE_SHA"...HEAD -- "$CHART_DIR" | tr -d '\r')
+          if [ -z "$CHANGED" ]; then
+            echo "No changes under $CHART_DIR."
+            exit 0
+          fi
+          echo "Changed files under $CHART_DIR:"
+          echo "$CHANGED"
+
+          # Require Chart.yaml change when any other chart files changed
+          if echo "$CHANGED" | grep -v -E '^helm/fume/Chart.yaml$' >/dev/null; then
+            if ! echo "$CHANGED" | grep -E '^helm/fume/Chart.yaml$' >/dev/null; then
+              echo "::error::Chart.yaml version must be bumped when chart files change."
+              exit 1
+            fi
+          fi
+
+          # Compare chart versions
+          OLD_VERSION=$(git show "$BASE_SHA:$CHART_DIR/Chart.yaml" | sed -n 's/^version:[[:space:]]*\(.*\)/\1/p' | tr -d '"' | tr -d "\r")
+          NEW_VERSION=$(sed -n 's/^version:[[:space:]]*\(.*\)/\1/p' "$CHART_DIR/Chart.yaml" | tr -d '"' | tr -d "\r")
+          echo "Old chart version: $OLD_VERSION"
+          echo "New chart version: $NEW_VERSION"
+          if [ "$OLD_VERSION" = "$NEW_VERSION" ]; then
+            echo "::error::Chart version not bumped (still $NEW_VERSION)."
+            exit 1
+          fi
+          if [ "$(printf '%s\n' "$OLD_VERSION" "$NEW_VERSION" | sort -V | tail -n1)" != "$NEW_VERSION" ]; then
+            echo "::error::New chart version ($NEW_VERSION) must be greater than old version ($OLD_VERSION)."
+            exit 1
+          fi
+
+      - name: Disallow latest image tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RIN --include 'values*.yaml' -E '(^|[:"[:space:]])latest(["[:space:]]|$)' helm/fume; then
+            echo "::error::Found usage of latest tag in values files. Pin to a specific version or digest."
+            exit 1
+          fi
