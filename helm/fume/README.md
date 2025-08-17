@@ -357,6 +357,33 @@ Common FHIR packages:
 - `us.core` - US Core profiles
 - `hl7.fhir.us.mcode` - Minimal Common Oncology Data Elements
 
+### Version tracking labels
+
+The chart adds labels that allow tracking what is deployed:
+- helm.sh/chart: <chart>-<version>
+- app.kubernetes.io/version: Chart appVersion (backend release)
+- app.kubernetes.io/component: backend | frontend
+- app.kubernetes.io/component-version: container image tag for the component
+- fume.outburn.dev/image: full image reference (repo:tag)
+- fume.outburn.dev/tag: container image tag
+- app.kubernetes.io/name, app.kubernetes.io/instance, app.kubernetes.io/managed-by
+
+Examples to query deployed versions:
+
+```bash
+# Backend image and tag (Deployment labels)
+kubectl -n fume get deploy fume-backend \
+  -o jsonpath='{.metadata.labels.fume\.outburn\.dev/image}{"\n"}{.metadata.labels.app\.kubernetes\.io/component-version}{"\n"}'
+
+# Frontend image and tag (Deployment labels)
+kubectl -n fume get deploy fume-frontend \
+  -o jsonpath='{.metadata.labels.fume\.outburn\.dev/image}{"\n"}{.metadata.labels.app\.kubernetes\.io/component-version}{"\n"}'
+
+# List pods with component and image labels
+kubectl -n fume get pods -l app.kubernetes.io/name=fume \
+  -o custom-columns=NAME:.metadata.name,COMPONENT:.metadata.labels.app\.kubernetes\.io/component,IMAGE:.metadata.labels.fume\.outburn\.dev/image,TAG:.metadata.labels.app\.kubernetes\.io/component-version
+```
+
 #### License File Handling
 
 FUME automatically scans for `*.lic` files in its root directory (`/usr/fume/` for backend, `/usr/fume-designer/` for frontend). The chart mounts the license file with a `.lic` extension, and FUME will:
