@@ -74,4 +74,10 @@ Validate required configuration values
 {{- if not .Values.configMap.FHIR_PACKAGES }}
 {{- fail "FHIR_PACKAGES is required and must be provided by the deploying organization (context/jurisdiction specific). Example: --set configMap.FHIR_PACKAGES=\"pkg1@x.y.z,pkg2,pkg3@a.b.c\"" }}
 {{- end }}
+{{- if not .Values.secrets.fume }}
+{{- fail "Application secrets name is required. Please ensure you have created the 'fume-secrets' secret or update values.yaml" }}
+{{- end }}
+{{- if not .Values.secrets.license }}
+{{- fail "License secret name is required. Please ensure you have created the 'fume-license' secret or update values.yaml" }}
+{{- end }}
 {{- end }}
