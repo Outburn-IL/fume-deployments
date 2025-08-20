@@ -20,4 +20,16 @@ image:
     tag: stable
 service:
   backend:
+    port: 80
     targetPort: 80
+backend:
+  resources:
+    limits:
+      cpu: 150m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  replicaCount: 1
+  # Ensure the containerPort matches nginx
+  containerPort: 80
