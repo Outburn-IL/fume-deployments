@@ -6,9 +6,9 @@ metadata:
   labels:
     {{- include "fume.labels" . | nindent 4 }}
     app.kubernetes.io/component: frontend
-    fume.outburn.dev/image: "{{ .Values.image.frontend.repository }}:{{ .Values.image.frontend.tag | default .Chart.AppVersion }}"
-    fume.outburn.dev/tag: "{{ .Values.image.frontend.tag | default .Chart.AppVersion }}"
-    app.kubernetes.io/component-version: "{{ .Values.image.frontend.tag | default .Chart.AppVersion }}"
+  fume.outburn.dev/image: "{{ include "fume.labelValue" (printf "%s:%s" .Values.image.frontend.repository (.Values.image.frontend.tag | default .Chart.AppVersion)) }}"
+  fume.outburn.dev/tag: "{{ include "fume.labelValue" (.Values.image.frontend.tag | default .Chart.AppVersion) }}"
+  app.kubernetes.io/component-version: "{{ include "fume.labelValue" (.Values.image.frontend.tag | default .Chart.AppVersion) }}"
 spec:
   {{- if not .Values.autoscaling.frontend.enabled }}
   replicas: {{ .Values.frontend.replicaCount }}
@@ -24,9 +24,9 @@ spec:
       labels:
         {{- include "fume.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: frontend
-        fume.outburn.dev/image: "{{ .Values.image.frontend.repository }}:{{ .Values.image.frontend.tag | default .Chart.AppVersion }}"
-        fume.outburn.dev/tag: "{{ .Values.image.frontend.tag | default .Chart.AppVersion }}"
-        app.kubernetes.io/component-version: "{{ .Values.image.frontend.tag | default .Chart.AppVersion }}"
+  fume.outburn.dev/image: "{{ include "fume.labelValue" (printf "%s:%s" .Values.image.frontend.repository (.Values.image.frontend.tag | default .Chart.AppVersion)) }}"
+  fume.outburn.dev/tag: "{{ include "fume.labelValue" (.Values.image.frontend.tag | default .Chart.AppVersion) }}"
+  app.kubernetes.io/component-version: "{{ include "fume.labelValue" (.Values.image.frontend.tag | default .Chart.AppVersion) }}"
     spec:
       {{- if .Values.image.pullSecret }}
       imagePullSecrets:
@@ -72,6 +72,14 @@ spec:
               value: {{ $value | quote }}
             {{- end }}
             {{- end }}
+            # Ensure Node.js trusts the appropriate CA bundle
+            {{- if .Values.tls.customCA.enabled }}
+            - name: NODE_EXTRA_CA_CERTS
+              value: {{ printf "%s/%s" .Values.tls.customCA.mountPath .Values.tls.customCA.filename }}
+            {{- else if .Values.tls.useServiceAccountCA }}
+            - name: NODE_EXTRA_CA_CERTS
+              value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "fume.fullname" . }}-config
@@ -85,6 +93,11 @@ spec:
               mountPath: /usr/fume-designer/license.key.lic
               subPath: license.key.lic
               readOnly: true
+            {{- if .Values.tls.customCA.enabled }}
+            - name: custom-ca
+              mountPath: {{ .Values.tls.customCA.mountPath }}
+              readOnly: true
+            {{- end }}
       volumes:
         - name: logs
           emptyDir: {}
@@ -94,6 +107,14 @@ spec:
             items:
               - key: license.key.lic
                 path: license.key.lic
+        {{- if .Values.tls.customCA.enabled }}
+        - name: custom-ca
+          secret:
+            secretName: {{ .Values.tls.customCA.secretName }}
+            items:
+              - key: {{ .Values.tls.customCA.key }}
+                path: {{ .Values.tls.customCA.filename }}
+        {{- end }}
       {{- with .Values.frontend.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

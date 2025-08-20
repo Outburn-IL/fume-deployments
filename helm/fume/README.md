@@ -102,6 +102,53 @@ Notes:
 - Password is the Docker Hub API token you'll receive from Outburn via secure channel
 - Avoid using the `latest` tag; pin a specific version or digest
 
+### TLS and certificate trust (Node.js)
+
+The containers run Node.js clients that must trust your organization's CAs to make outbound HTTPS calls (e.g., to FHIR servers). By default, this chart configures Node.js to trust the Kubernetes ServiceAccount CA by setting `NODE_EXTRA_CA_CERTS=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt`.
+
+You can also mount your own corporate CA bundle (PEM) from a Secret and point Node.js to it.
+
+Defaults (in `values.yaml`):
+
+```yaml
+tls:
+  useServiceAccountCA: true
+  customCA:
+    enabled: false
+    secretName: ""
+    key: ca.crt
+    mountPath: /etc/ssl/custom-ca
+    filename: ca.crt
+```
+
+Use a custom CA bundle (preferred for enterprise networks):
+
+1) Create a Secret that contains your PEM bundle (single file, may contain multiple certs):
+
+```cmd
+kubectl create secret generic custom-ca ^
+  --from-file=ca.crt=corp-root-bundle.pem ^
+  --namespace fume
+```
+
+2) Enable and reference it in values:
+
+```yaml
+tls:
+  useServiceAccountCA: false
+  customCA:
+    enabled: true
+    secretName: custom-ca
+    key: ca.crt
+    mountPath: /etc/ssl/custom-ca
+    filename: ca.crt
+```
+
+Behavior:
+- If `tls.customCA.enabled=true`, the chart mounts the secret and sets `NODE_EXTRA_CA_CERTS` to `<mountPath>/<filename>`.
+- Else if `tls.useServiceAccountCA=true` (default), Node.js trusts the SA CA at `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt`.
+- No insecure overrides are used. Avoid setting `NODE_TLS_REJECT_UNAUTHORIZED=0`.
+
 ### Enable/Disable Frontend
 
 ```yaml
@@ -375,9 +422,17 @@ The chart adds labels that allow tracking what is deployed:
 - app.kubernetes.io/version: Chart appVersion (backend release)
 - app.kubernetes.io/component: backend | frontend
 - app.kubernetes.io/component-version: container image tag for the component
-- fume.outburn.dev/image: full image reference (repo:tag)
-- fume.outburn.dev/tag: container image tag
+- fume.outburn.dev/image: image identifier derived from repo:tag (normalized for label constraints: lowercased; '/' ':' '@' replaced with '-'; may be truncated to 63 chars)
+- fume.outburn.dev/tag: container image tag (normalized for label constraints)
 - app.kubernetes.io/name, app.kubernetes.io/instance, app.kubernetes.io/managed-by
+
+Note: If you need the exact, unsanitized image reference, query the container spec:
+
+```bash
+kubectl -n <ns> get deploy <name> -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+```
+
+Label namespace note: The `fume.outburn.dev/*` prefix is a custom label namespace based on the Outburn domain. The `.dev` here is part of the domain name, not an indicator of a development environment. These labels are used across all environments (dev/test/prod).
 
 Examples to query deployed versions:
 
@@ -564,6 +619,20 @@ kubectl describe pod -l app.kubernetes.io/name=fume --namespace fume
 kubectl run test-pull --image=outburnltd/fume-enterprise-server:1.7.1 --image-pull-policy=Always --rm -it --restart=Never --namespace fume
 ```
 
+#### 5. x509 / certificate trust errors
+
+Symptoms: Errors like `x509: certificate signed by unknown authority` when the backend tries to access HTTPS endpoints.
+
+What to check:
+- If your organization uses a custom/corporate CA, create a CA bundle Secret and enable `tls.customCA.enabled=true` (see section above).
+- If using the cluster's ServiceAccount CA, ensure defaults are in effect (`tls.useServiceAccountCA=true`).
+- Verify the PEM file contains only certificates (no private keys).
+- Confirm the environment variable is set in the pod:
+
+```cmd
+kubectl -n fume exec deploy/fume-backend -- printenv NODE_EXTRA_CA_CERTS
+```
+
 ### Logs
 
 ```bash
@@ -616,6 +685,7 @@ For issues related to:
 ## Chart Information
 
 - **Chart Version**: 0.1.1
+ - **Chart Version**: 0.2.2
 - **App Version**: 1.7.1
 - **Kubernetes Version**: 1.19+
 - **Helm Version**: 3.2.0+

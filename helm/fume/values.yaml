@@ -130,6 +130,23 @@ configMap:
   # FHIR_PACKAGES: ""      # REQUIRED: Comma-separated package list (context-specific) - set via --set configMap.FHIR_PACKAGES="pkg1@x.y.z,pkg2,pkg3@a.b.c"
   # FUME_SERVER_URL: ""     # REQUIRED: Browser-facing URL to the backend; must be reachable from the user's network.
 
+# TLS/Trust configuration for Node.js clients inside the pods
+# By default, Node.js in the containers will trust the Kubernetes ServiceAccount CA
+# at /var/run/secrets/kubernetes.io/serviceaccount/ca.crt via NODE_EXTRA_CA_CERTS.
+# You can also mount a custom corporate CA bundle from a Secret and point Node.js to it.
+tls:
+  # When true (default), set NODE_EXTRA_CA_CERTS to the service account CA path.
+  useServiceAccountCA: true
+
+  # Optional: mount a Secret containing a PEM bundle (one file) with corporate/internal CAs
+  # and set NODE_EXTRA_CA_CERTS to that file instead of the service account CA.
+  customCA:
+    enabled: false
+    secretName: ""   # Name of the Secret that contains the CA bundle
+    key: ca.crt      # Key in the Secret to mount (must be a single PEM file)
+    mountPath: /etc/ssl/custom-ca  # Where to mount the Secret
+    filename: ca.crt # Filename to give the mounted key
+
 # Liveness and readiness probes
 probes:
   backend:
