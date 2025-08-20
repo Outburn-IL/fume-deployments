@@ -81,3 +81,35 @@ Validate required configuration values
 {{- fail "License secret name is required. Please ensure you have created the 'fume-license' secret or update values.yaml" }}
 {{- end }}
 {{- end }}
+
+{{/*
+Sanitize arbitrary strings into valid Kubernetes label values.
+Rules:
+ - Lowercase
+ - Replace '/', ':', and '@' with '-'
+ - Replace any other invalid chars with '-'
+ - Trim leading/trailing non-alphanumerics
+ - Truncate to 63 chars and ensure it ends with alphanumeric
+Usage: {{ include "fume.labelValue" "some/raw:value" }}
+*/}}
+{{- define "fume.labelValue" -}}
+{{- $raw := . -}}
+{{- $v := lower $raw -}}
+{{- $v = replace "/" "-" $v -}}
+{{- $v = replace ":" "-" $v -}}
+{{- $v = replace "@" "-" $v -}}
+{{- /* Replace any remaining invalid characters */ -}}
+{{- $v = regexReplaceAll "[^a-z0-9_.-]" $v "-" -}}
+{{- /* Trim invalid start/end characters */ -}}
+{{- $v = regexReplaceAll "^[^a-z0-9]+" $v "" -}}
+{{- $v = regexReplaceAll "[^a-z0-9]+$" $v "" -}}
+{{- /* Truncate and ensure it ends with an alphanumeric */ -}}
+{{- $v = trunc 63 $v -}}
+{{- $v = regexReplaceAll "[^a-z0-9]+$" $v "" -}}
+{{- /* Fallback if empty after sanitization */ -}}
+{{- if eq $v "" -}}
+unknown
+{{- else -}}
+{{- $v -}}
+{{- end -}}
+{{- end }}

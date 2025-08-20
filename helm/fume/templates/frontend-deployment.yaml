@@ -6,9 +6,9 @@ metadata:
   labels:
     {{- include "fume.labels" . | nindent 4 }}
     app.kubernetes.io/component: frontend
-    fume.outburn.dev/image: "{{ .Values.image.frontend.repository }}:{{ .Values.image.frontend.tag | default .Chart.AppVersion }}"
-    fume.outburn.dev/tag: "{{ .Values.image.frontend.tag | default .Chart.AppVersion }}"
-    app.kubernetes.io/component-version: "{{ .Values.image.frontend.tag | default .Chart.AppVersion }}"
+  fume.outburn.dev/image: "{{ include "fume.labelValue" (printf "%s:%s" .Values.image.frontend.repository (.Values.image.frontend.tag | default .Chart.AppVersion)) }}"
+  fume.outburn.dev/tag: "{{ include "fume.labelValue" (.Values.image.frontend.tag | default .Chart.AppVersion) }}"
+  app.kubernetes.io/component-version: "{{ include "fume.labelValue" (.Values.image.frontend.tag | default .Chart.AppVersion) }}"
 spec:
   {{- if not .Values.autoscaling.frontend.enabled }}
   replicas: {{ .Values.frontend.replicaCount }}
@@ -24,9 +24,9 @@ spec:
       labels:
         {{- include "fume.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: frontend
-        fume.outburn.dev/image: "{{ .Values.image.frontend.repository }}:{{ .Values.image.frontend.tag | default .Chart.AppVersion }}"
-        fume.outburn.dev/tag: "{{ .Values.image.frontend.tag | default .Chart.AppVersion }}"
-        app.kubernetes.io/component-version: "{{ .Values.image.frontend.tag | default .Chart.AppVersion }}"
+  fume.outburn.dev/image: "{{ include "fume.labelValue" (printf "%s:%s" .Values.image.frontend.repository (.Values.image.frontend.tag | default .Chart.AppVersion)) }}"
+  fume.outburn.dev/tag: "{{ include "fume.labelValue" (.Values.image.frontend.tag | default .Chart.AppVersion) }}"
+  app.kubernetes.io/component-version: "{{ include "fume.labelValue" (.Values.image.frontend.tag | default .Chart.AppVersion) }}"
     spec:
       {{- if .Values.image.pullSecret }}
       imagePullSecrets:

@@ -422,9 +422,17 @@ The chart adds labels that allow tracking what is deployed:
 - app.kubernetes.io/version: Chart appVersion (backend release)
 - app.kubernetes.io/component: backend | frontend
 - app.kubernetes.io/component-version: container image tag for the component
-- fume.outburn.dev/image: full image reference (repo:tag)
-- fume.outburn.dev/tag: container image tag
+- fume.outburn.dev/image: image identifier derived from repo:tag (normalized for label constraints: lowercased; '/' ':' '@' replaced with '-'; may be truncated to 63 chars)
+- fume.outburn.dev/tag: container image tag (normalized for label constraints)
 - app.kubernetes.io/name, app.kubernetes.io/instance, app.kubernetes.io/managed-by
+
+Note: If you need the exact, unsanitized image reference, query the container spec:
+
+```bash
+kubectl -n <ns> get deploy <name> -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+```
+
+Label namespace note: The `fume.outburn.dev/*` prefix is a custom label namespace based on the Outburn domain. The `.dev` here is part of the domain name, not an indicator of a development environment. These labels are used across all environments (dev/test/prod).
 
 Examples to query deployed versions:
 
