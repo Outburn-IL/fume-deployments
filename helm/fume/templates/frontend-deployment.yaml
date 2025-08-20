@@ -72,6 +72,14 @@ spec:
               value: {{ $value | quote }}
             {{- end }}
             {{- end }}
+            # Ensure Node.js trusts the appropriate CA bundle
+            {{- if .Values.tls.customCA.enabled }}
+            - name: NODE_EXTRA_CA_CERTS
+              value: {{ printf "%s/%s" .Values.tls.customCA.mountPath .Values.tls.customCA.filename }}
+            {{- else if .Values.tls.useServiceAccountCA }}
+            - name: NODE_EXTRA_CA_CERTS
+              value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "fume.fullname" . }}-config
@@ -85,6 +93,11 @@ spec:
               mountPath: /usr/fume-designer/license.key.lic
               subPath: license.key.lic
               readOnly: true
+            {{- if .Values.tls.customCA.enabled }}
+            - name: custom-ca
+              mountPath: {{ .Values.tls.customCA.mountPath }}
+              readOnly: true
+            {{- end }}
       volumes:
         - name: logs
           emptyDir: {}
@@ -94,6 +107,14 @@ spec:
             items:
               - key: license.key.lic
                 path: license.key.lic
+        {{- if .Values.tls.customCA.enabled }}
+        - name: custom-ca
+          secret:
+            secretName: {{ .Values.tls.customCA.secretName }}
+            items:
+              - key: {{ .Values.tls.customCA.key }}
+                path: {{ .Values.tls.customCA.filename }}
+        {{- end }}
       {{- with .Values.frontend.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
