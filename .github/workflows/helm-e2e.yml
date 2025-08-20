@@ -1,0 +1,105 @@
+name: Helm Chart E2E (KinD)
+
+on:
+  pull_request:
+    paths:
+      - 'helm/fume/**'
+      - '.github/workflows/helm-e2e.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint chart
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Helm lint
+        run: |
+          helm lint ./helm/fume
+
+      - name: Render manifests (sanity)
+        run: |
+          helm template fume ./helm/fume \
+            --set configMap.CANONICAL_BASE_URL="https://fume.example.com" \
+            --set configMap.FUME_SERVER_URL="https://api.example.com" \
+            --set configMap.FHIR_PACKAGES="hl7.fhir.r4.core@4.0.1" \
+            --set enableFrontend=false \
+            --set storage.snapshots.enabled=false \
+            --set storage.templates.enabled=false \
+            --set probes.backend.liveness.enabled=false \
+            --set probes.backend.readiness.enabled=false \
+            --set image.backend.repository=nginx \
+            --set image.backend.tag=stable \
+            --set service.backend.targetPort=80 > /dev/null
+
+  e2e:
+    name: Install on KinD and verify rollout
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create KinD cluster
+        uses: helm/kind-action@v1.9.0
+        with:
+          version: v0.23.0
+          node_image: kindest/node:v1.29.4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.29.4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Create namespace
+        run: |
+          kubectl create namespace fume
+
+      - name: Create required secrets (dummy)
+        run: |
+          # License secret with a dummy file key
+          kubectl -n fume create secret generic fume-license \
+            --from-literal=license.key.lic=dummy
+
+          # Application secrets (minimally required keys)
+          kubectl -n fume create secret generic fume-secrets \
+            --from-literal=FHIR_SERVER_BASE="https://example.com/fhir"
+
+      - name: Install chart with CI overrides
+        run: |
+          helm install fume ./helm/fume \
+            -n fume \
+            --set configMap.CANONICAL_BASE_URL="https://fume.example.com" \
+            --set configMap.FUME_SERVER_URL="https://api.example.com" \
+            --set configMap.FHIR_PACKAGES="hl7.fhir.r4.core@4.0.1" \
+            --set enableFrontend=false \
+            --set storage.snapshots.enabled=false \
+            --set storage.templates.enabled=false \
+            --set probes.backend.liveness.enabled=false \
+            --set probes.backend.readiness.enabled=false \
+            --set image.backend.repository=nginx \
+            --set image.backend.tag=stable \
+            --set service.backend.targetPort=80
+
+      - name: Wait for backend rollout
+        run: |
+          kubectl -n fume rollout status deploy/fume-backend --timeout=120s
+
+      - name: Basic smoke listing
+        if: always()
+        run: |
+          kubectl -n fume get all
