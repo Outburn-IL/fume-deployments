@@ -85,6 +85,9 @@ spec:
               mountPath: /usr/fume/snapshots
             - name: templates
               mountPath: /usr/fume/templates
+            # Writable cache directory for FHIR packages (fixes EACCES on '/.fhir/packages')
+            - name: fhir-cache
+              mountPath: /.fhir
             # Mount license as a single file
             - name: license
               mountPath: /usr/fume/license.key.lic
@@ -99,6 +102,9 @@ spec:
         - name: templates
           persistentVolumeClaim:
             claimName: {{ include "fume.fullname" . }}-templates
+        # Ephemeral writable volume for FHIR package cache
+        - name: fhir-cache
+          emptyDir: {}
         - name: license
           secret:
             secretName: {{ .Values.secrets.license }}
