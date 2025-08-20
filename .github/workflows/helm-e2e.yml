@@ -24,22 +24,11 @@ jobs:
 
       - name: Helm lint
         run: |
-          helm lint ./helm/fume
+          helm lint ./helm/fume -f ./helm/fume/values-ci.yaml
 
       - name: Render manifests (sanity)
         run: |
-          helm template fume ./helm/fume \
-            --set configMap.CANONICAL_BASE_URL="https://fume.example.com" \
-            --set configMap.FUME_SERVER_URL="https://api.example.com" \
-            --set configMap.FHIR_PACKAGES="hl7.fhir.r4.core@4.0.1" \
-            --set enableFrontend=false \
-            --set storage.snapshots.enabled=false \
-            --set storage.templates.enabled=false \
-            --set probes.backend.liveness.enabled=false \
-            --set probes.backend.readiness.enabled=false \
-            --set image.backend.repository=nginx \
-            --set image.backend.tag=stable \
-            --set service.backend.targetPort=80 > /dev/null
+          helm template fume ./helm/fume -f ./helm/fume/values-ci.yaml > /dev/null
 
   e2e:
     name: Install on KinD and verify rollout
@@ -81,19 +70,7 @@ jobs:
 
       - name: Install chart with CI overrides
         run: |
-          helm install fume ./helm/fume \
-            -n fume \
-            --set configMap.CANONICAL_BASE_URL="https://fume.example.com" \
-            --set configMap.FUME_SERVER_URL="https://api.example.com" \
-            --set configMap.FHIR_PACKAGES="hl7.fhir.r4.core@4.0.1" \
-            --set enableFrontend=false \
-            --set storage.snapshots.enabled=false \
-            --set storage.templates.enabled=false \
-            --set probes.backend.liveness.enabled=false \
-            --set probes.backend.readiness.enabled=false \
-            --set image.backend.repository=nginx \
-            --set image.backend.tag=stable \
-            --set service.backend.targetPort=80
+          helm install fume ./helm/fume -n fume -f ./helm/fume/values-ci.yaml
 
       - name: Wait for backend rollout
         run: |
