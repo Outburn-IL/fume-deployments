@@ -5,9 +5,9 @@ metadata:
   labels:
     {{- include "fume.labels" . | nindent 4 }}
     app.kubernetes.io/component: backend
-  fume.outburn.dev/image: "{{ include "fume.labelValue" (printf "%s:%s" .Values.image.backend.repository (.Values.image.backend.tag | default .Chart.AppVersion)) }}"
-  fume.outburn.dev/tag: "{{ include "fume.labelValue" (.Values.image.backend.tag | default .Chart.AppVersion) }}"
-  app.kubernetes.io/component-version: "{{ include "fume.labelValue" (.Values.image.backend.tag | default .Chart.AppVersion) }}"
+    fume.outburn.dev/image: "{{ include "fume.labelValue" (printf "%s:%s" .Values.image.backend.repository (.Values.image.backend.tag | default .Chart.AppVersion)) }}"
+    fume.outburn.dev/tag: "{{ include "fume.labelValue" (.Values.image.backend.tag | default .Chart.AppVersion) }}"
+    app.kubernetes.io/component-version: "{{ include "fume.labelValue" (.Values.image.backend.tag | default .Chart.AppVersion) }}"
 spec:
   {{- if not .Values.autoscaling.backend.enabled }}
   replicas: {{ .Values.backend.replicaCount }}
@@ -23,9 +23,9 @@ spec:
       labels:
         {{- include "fume.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: backend
-  fume.outburn.dev/image: "{{ include "fume.labelValue" (printf "%s:%s" .Values.image.backend.repository (.Values.image.backend.tag | default .Chart.AppVersion)) }}"
-  fume.outburn.dev/tag: "{{ include "fume.labelValue" (.Values.image.backend.tag | default .Chart.AppVersion) }}"
-  app.kubernetes.io/component-version: "{{ include "fume.labelValue" (.Values.image.backend.tag | default .Chart.AppVersion) }}"
+        fume.outburn.dev/image: "{{ include "fume.labelValue" (printf "%s:%s" .Values.image.backend.repository (.Values.image.backend.tag | default .Chart.AppVersion)) }}"
+        fume.outburn.dev/tag: "{{ include "fume.labelValue" (.Values.image.backend.tag | default .Chart.AppVersion) }}"
+        app.kubernetes.io/component-version: "{{ include "fume.labelValue" (.Values.image.backend.tag | default .Chart.AppVersion) }}"
     spec:
       {{- if .Values.image.pullSecret }}
       imagePullSecrets:
