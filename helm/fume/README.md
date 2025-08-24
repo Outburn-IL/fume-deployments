@@ -85,7 +85,7 @@ Update the image settings in `values.yaml` (or override in `values.prod.yaml`) o
 image:
   backend:
     repository: outburnltd/fume-enterprise-server  # Private Docker Hub repository
-    tag: "1.7.1"
+    tag: "1.7.2"
   frontend:
     repository: outburnltd/fume-designer           # Private Docker Hub repository  
     tag: "2.1.3"
@@ -420,7 +420,7 @@ All backend pods will see the files at `/.fhir/packages` (mounted from the same 
 # Use default values with frontend enabled
 helm install fume-dev ./helm/fume \
   --namespace fume-dev \
-  --set image.backend.tag=1.7.1 \
+  --set image.backend.tag=1.7.2 \
   --set image.frontend.tag=2.1.3 \
   --set storage.snapshots.size=5Gi \
   --set env.FUME_DESIGNER_HEADLINE="FUME Designer - DEV" \
@@ -435,7 +435,7 @@ helm install fume-dev ./helm/fume \
 # Custom values for testing
 helm install fume-test ./helm/fume \
   --namespace fume-test \
-  --set image.backend.tag=1.7.1 \
+  --set image.backend.tag=1.7.2 \
   --set image.frontend.tag=2.1.3 \
   --set backend.replicaCount=2 \
   --set enableFrontend=true \
@@ -453,7 +453,7 @@ helm install fume-test ./helm/fume \
 helm install fume-prod ./helm/fume \
   -f ./helm/fume/values.prod.yaml \
   --namespace fume-prod \
-  --set image.backend.tag=1.7.1 \
+  --set image.backend.tag=1.7.2 \
   --set image.frontend.tag=2.1.3 \
   --set configMap.FUME_SERVER_URL="https://fume-api.company.com" \
   --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
@@ -747,7 +747,7 @@ kubectl get serviceaccount default -n fume -o yaml | grep -A3 imagePullSecrets
 kubectl describe pod -l app.kubernetes.io/name=fume --namespace fume
 
 # Test Docker Hub connectivity (replace with actual image)
-kubectl run test-pull --image=outburnltd/fume-enterprise-server:1.7.1 --image-pull-policy=Always --rm -it --restart=Never --namespace fume
+kubectl run test-pull --image=outburnltd/fume-enterprise-server:1.7.2 --image-pull-policy=Always --rm -it --restart=Never --namespace fume
 ```
 
 #### 5. x509 / certificate trust errors
@@ -817,7 +817,7 @@ For issues related to:
 
 - **Chart Version**: 0.1.1
  - **Chart Version**: 0.2.2
-- **App Version**: 1.7.1
+- **App Version**: 1.7.2
 - **Kubernetes Version**: 1.19+
 - **Helm Version**: 3.2.0+
 

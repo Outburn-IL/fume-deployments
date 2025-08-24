@@ -13,7 +13,7 @@ enableFrontend: true
 image:
   backend:
     repository: outburnltd/fume-enterprise-server
-    tag: "1.7.1"
+    tag: "1.7.2"
   frontend:
     repository: outburnltd/fume-designer
     tag: "2.1.3"
