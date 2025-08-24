@@ -271,6 +271,16 @@ storage:
     size: 1Gi
     storageClass: "ssd"
     accessMode: ReadWriteOnce
+
+  # Optional: Persist the FHIR package cache and allow offline/preloaded use
+  fhirCache:
+    enabled: true
+    # If you have an existing PVC you manage externally, set its name here;
+    # otherwise the chart will create `<release>-fhir-cache` when enabled.
+    # existingClaim: my-prepared-fhir-cache
+    size: 5Gi
+    storageClass: "ssd"
+    accessMode: ReadWriteOnce
 ```
 
 ### Storage Classes
@@ -280,6 +290,127 @@ Common storage class examples:
 - Google GKE: `standard`, `ssd`
 - Azure AKS: `default`, `managed-premium`
 - On-premise: Check with your cluster administrator
+
+### Preloading FHIR package cache (egress blocked networks)
+
+When outbound internet is blocked, enable a persistent cache and preload packages manually:
+
+1) Enable the FHIR cache volume
+
+```yaml
+storage:
+  fhirCache:
+    enabled: true
+    size: 5Gi
+    storageClass: "ssd"   # or your class
+    accessMode: ReadWriteOnce
+```
+
+Optionally set `existingClaim` to use a PVC you manage:
+
+```yaml
+storage:
+  fhirCache:
+    enabled: true
+    existingClaim: my-prepared-fhir-cache
+```
+
+2) Create or locate the PVC (if not using existingClaim). The chart will create `<release>-fhir-cache` when enabled.
+
+3) Load packages into the PVC. The backend mounts the cache at `/.fhir`, with the package directory at `/.fhir/packages`.
+
+You can copy data into the PVC in several ways:
+
+- Temporary helper pod (example uses busybox):
+
+```cmd
+kubectl run fhir-cache-loader --rm -it --restart=Never --image=busybox ^
+  --namespace fume -- sh
+
+# Inside the pod, mount the PVC (if you need a pod with the mount, create one):
+# Alternatively, use 'kubectl cp' against a running backend pod after enabling the PVC.
+```
+
+- Using kubectl cp to a backend pod after enabling the PVC:
+
+```cmd
+# Copy your prepared cache directory structure (must contain a 'packages' subdir)
+# This copies into the mounted PVC at /.fhir
+kubectl -n fume cp ./cache/. <backend-pod-name>:/.fhir
+```
+
+Expected on disk inside the pod:
+
+```
+/.fhir/
+  packages/
+    <package-name>@<version>/
+    <another-package>@<version>/
+```
+
+Notes:
+- The path `/.fhir` is writable in the container and mapped to the PVC when enabled.
+- If `fhirCache.enabled=false`, the chart uses an ephemeral emptyDir at the same path (default behavior).
+- For teams wanting direct, outside-cluster access to the cache, back the PVC with an RWX storage class (e.g., NFS/EFS/AzureFile) and set `storage.fhirCache.existingClaim` to a claim you also mount elsewhere.
+
+### Two DevOps-friendly workflows for preloading
+
+1) Mirror from a warmed backend pod (simple)
+
+- Temporarily allow egress or run in a network that permits downloads once, let FUME populate `/.fhir/packages`.
+- Then copy that directory out and reuse it:
+
+```cmd
+# Copy packages from a warmed pod to your local machine
+kubectl -n fume cp <backend-pod-name>:/.fhir/packages ./packages
+
+# Later, preload into another environment (with PVC enabled)
+kubectl -n fume cp ./packages/. <backend-pod-name>:/.fhir/packages
+```
+
+2) Use an RWX-backed existing PVC (transparent, multi-writer)
+
+- Provision a ReadWriteMany volume (e.g., NFS, EFS, AzureFile) and create a PVC for it in the target namespace.
+- Mount that PVC in the chart by setting:
+
+```yaml
+storage:
+  fhirCache:
+    enabled: true
+    existingClaim: my-prepared-fhir-cache
+```
+
+- Mount the same PVC on a utility pod or external node to manage files directly. Example helper pod manifest:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fhir-cache-helper
+  namespace: fume
+spec:
+  containers:
+    - name: shell
+      image: alpine:3.20
+      command: ["/bin/sh","-c","sleep 36000"]
+      volumeMounts:
+        - name: cache
+          mountPath: /cache
+  volumes:
+    - name: cache
+      persistentVolumeClaim:
+        claimName: my-prepared-fhir-cache
+  restartPolicy: Never
+```
+
+Then, from your workstation:
+
+```cmd
+# Copy your prepared content into the shared PVC via the helper pod
+kubectl -n fume cp .\packages\. fhir-cache-helper:/cache/packages
+```
+
+All backend pods will see the files at `/.fhir/packages` (mounted from the same PVC), with no further changes needed.
 
 ## Environment-Specific Deployments
 

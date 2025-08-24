@@ -101,6 +101,10 @@ spec:
               mountPath: /usr/fume/license.key.lic
               subPath: license.key.lic
               readOnly: true
+            # Always writable index file (emptyDir backed)
+            - name: fhir-index
+              mountPath: /usr/fume/fhirPackageIndex.json
+              subPath: fhirPackageIndex.json
             {{- if .Values.tls.customCA.enabled }}
             - name: custom-ca
               mountPath: {{ .Values.tls.customCA.mountPath }}
@@ -115,15 +119,23 @@ spec:
         - name: templates
           persistentVolumeClaim:
             claimName: {{ include "fume.fullname" . }}-templates
-        # Ephemeral writable volume for FHIR package cache
+        # FHIR package cache volume
+        {{- if .Values.storage.fhirCache.enabled }}
+        - name: fhir-cache
+          persistentVolumeClaim:
+            claimName: {{ if .Values.storage.fhirCache.existingClaim }}{{ .Values.storage.fhirCache.existingClaim }}{{ else }}{{ include "fume.fullname" . }}-fhir-cache{{ end }}
+        {{- else }}
         - name: fhir-cache
           emptyDir: {}
+        {{- end }}
         - name: license
           secret:
             secretName: {{ .Values.secrets.license }}
             items:
               - key: license.key.lic
                 path: license.key.lic
+        - name: fhir-index
+          emptyDir: {}
         {{- if .Values.tls.customCA.enabled }}
         - name: custom-ca
           secret:
@@ -144,3 +156,10 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      initContainers:
+        - name: init-fhir-index
+          image: busybox:1.36
+          command: ["sh","-c","set -eu; FILE=/index/fhirPackageIndex.json; mkdir -p /index && [ -f \"$FILE\" ] || echo '{}' > \"$FILE\" && chmod 664 \"$FILE\" "]
+          volumeMounts:
+            - name: fhir-index
+              mountPath: /index
