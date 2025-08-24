@@ -33,3 +33,23 @@ spec:
   storageClassName: {{ .Values.storage.templates.storageClass }}
   {{- end }}
 {{- end }}
+
+---
+{{- if and .Values.storage.fhirCache.enabled (not .Values.storage.fhirCache.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "fume.fullname" . }}-fhir-cache
+  labels:
+    {{- include "fume.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.storage.fhirCache.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.fhirCache.size }}
+  {{- if .Values.storage.fhirCache.storageClass }}
+  storageClassName: {{ .Values.storage.fhirCache.storageClass }}
+  {{- end }}
+{{- end }}
+

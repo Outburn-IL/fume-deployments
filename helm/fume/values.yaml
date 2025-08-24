@@ -13,7 +13,7 @@ enableFrontend: true
 image:
   backend:
     repository: outburnltd/fume-enterprise-server
-    tag: "1.7.1"
+    tag: "1.7.2"
   frontend:
     repository: outburnltd/fume-designer
     tag: "2.1.3"
@@ -96,6 +96,18 @@ storage:
     size: 1Gi
     storageClass: ""
     accessMode: ReadWriteOnce
+  # Optional persistent cache for preloaded FHIR packages.
+  # When enabled, the backend will mount a PVC at /.fhir to cache packages across restarts
+  # so clusters with blocked egress can preload packages out-of-band.
+  fhirCache:
+    enabled: false
+    # Either reference an existing claim by name, or let the chart create one (when enabled and existingClaim is empty)
+    existingClaim: ""
+  size: 5Gi
+  storageClass: ""
+  accessMode: ReadWriteOnce
+
+  # No extra configuration needed for the index file; it's handled via emptyDir.
 
 # Service account
 serviceAccount:

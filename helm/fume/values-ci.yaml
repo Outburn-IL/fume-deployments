@@ -1,0 +1,35 @@
+configMap:
+  CANONICAL_BASE_URL: "https://fume.example.com"
+  FUME_SERVER_URL: "https://api.example.com"
+  FHIR_PACKAGES: "hl7.fhir.r4.core@4.0.1"
+enableFrontend: false
+storage:
+  snapshots:
+    enabled: false
+  templates:
+    enabled: false
+probes:
+  backend:
+    liveness:
+      enabled: false
+    readiness:
+      enabled: false
+image:
+  backend:
+    repository: nginx
+    tag: stable
+service:
+  backend:
+    port: 80
+    targetPort: 80
+backend:
+  resources:
+    limits:
+      cpu: 150m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  replicaCount: 1
+  # Ensure the containerPort matches nginx
+  containerPort: 80
