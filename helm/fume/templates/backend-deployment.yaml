@@ -1,14 +1,12 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ include "fume.fullname" . }}-backend
   labels:
     {{- include "fume.labels" . | nindent 4 }}
     app.kubernetes.io/component: backend
-    fume.outburn.dev/image: "{{ include "fume.labelValue" (printf "%s:%s" .Values.image.backend.repository (.Values.image.backend.tag | default .Chart.AppVersion)) }}"
-    fume.outburn.dev/tag: "{{ include "fume.labelValue" (.Values.image.backend.tag | default .Chart.AppVersion) }}"
-    app.kubernetes.io/component-version: "{{ include "fume.labelValue" (.Values.image.backend.tag | default .Chart.AppVersion) }}"
 spec:
+  serviceName: {{ include "fume.fullname" . }}-backend-headless
   {{- if not .Values.autoscaling.backend.enabled }}
   replicas: {{ .Values.backend.replicaCount }}
   {{- end }}
@@ -23,9 +21,6 @@ spec:
       labels:
         {{- include "fume.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: backend
-        fume.outburn.dev/image: "{{ include "fume.labelValue" (printf "%s:%s" .Values.image.backend.repository (.Values.image.backend.tag | default .Chart.AppVersion)) }}"
-        fume.outburn.dev/tag: "{{ include "fume.labelValue" (.Values.image.backend.tag | default .Chart.AppVersion) }}"
-        app.kubernetes.io/component-version: "{{ include "fume.labelValue" (.Values.image.backend.tag | default .Chart.AppVersion) }}"
     spec:
       {{- if .Values.image.pullSecret }}
       imagePullSecrets:
@@ -176,3 +171,24 @@ spec:
           volumeMounts:
             - name: fhir-index
               mountPath: /index
+  volumeClaimTemplates:
+    - metadata:
+        name: snapshots
+        labels:
+          {{- include "fume.labels" . | nindent 10 }}
+      spec:
+        accessModes: [ "{{ .Values.storage.snapshots.accessMode }}" ]
+        storageClassName: {{ .Values.storage.snapshots.storageClass | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.storage.snapshots.size }}
+    - metadata:
+        name: templates
+        labels:
+          {{- include "fume.labels" . | nindent 10 }}
+      spec:
+        accessModes: [ "{{ .Values.storage.templates.accessMode }}" ]
+        storageClassName: {{ .Values.storage.templates.storageClass | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.storage.templates.size }}
