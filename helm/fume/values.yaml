@@ -97,7 +97,7 @@ storage:
     storageClass: ""
     accessMode: ReadWriteOnce
   # Optional persistent cache for preloaded FHIR packages.
-  # When enabled, the backend will mount a PVC at /.fhir to cache packages across restarts
+  # When enabled, the backend will mount a PVC at /usr/fume/fhir-packages to cache packages across restarts
   # so clusters with blocked egress can preload packages out-of-band.
   fhirCache:
     enabled: false
