@@ -13,7 +13,7 @@ enableFrontend: true
 image:
   backend:
     repository: outburnltd/fume-enterprise-server
-    tag: "1.7.2"
+    tag: "1.8.0"  # Backend application version (matches Chart appVersion unless overridden)
   frontend:
     repository: outburnltd/fume-designer
     tag: "2.1.3"
