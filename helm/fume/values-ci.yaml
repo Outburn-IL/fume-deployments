@@ -14,7 +14,7 @@ storage:
     size: 10Gi
     accessMode: ReadWriteOnce
     storageClass: "standard"
-  fhir-cache:
+  fhirСache:
     enabled: false
     size: 10Gi
     accessMode: ReadWriteOnce

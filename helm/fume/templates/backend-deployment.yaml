@@ -193,7 +193,7 @@ spec:
           requests:
             storage: {{ .Values.storage.templates.size }}
     - metadata:
-        name: fhir-cache
+        name: fhirСache
         labels:
           {{- include "fume.labels" . | nindent 10 }}
       spec:
