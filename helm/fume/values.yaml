@@ -119,6 +119,8 @@ serviceAccount:
 secrets:
   fume: "fume-secrets"  # Name of the secret containing sensitive config (e.g., FHIR_SERVER_BASE; if BASIC auth: FHIR_SERVER_UN/FHIR_SERVER_PW)
   license: "fume-license"  # Name of the secret containing the license file; must include key: license.key.lic (must end with .lic)
+  # Optional secret key you may add to the fume-secrets Secret:
+  # FHIR_PACKAGE_REGISTRY_TOKEN: <token> (used only when configMap.FHIR_PACKAGE_REGISTRY_URL is set)
 
 # Environment variables
 env:
@@ -141,6 +143,7 @@ configMap:
   # CANONICAL_BASE_URL: ""  # REQUIRED: Unique canonical identifier (typically FQDN) used in FHIR resources, e.g., https://fhir.company.com.
   # FHIR_PACKAGES: ""      # REQUIRED: Comma-separated package list (context-specific) - set via --set configMap.FHIR_PACKAGES="pkg1@x.y.z,pkg2,pkg3@a.b.c"
   # FUME_SERVER_URL: ""     # REQUIRED: Browser-facing URL to the backend; must be reachable from the user's network.
+  # FHIR_PACKAGE_REGISTRY_URL: "" # Optional: Custom FHIR package registry base URL. If omitted, default upstream registry is used.
 
 # TLS/Trust configuration for Node.js clients inside the pods
 # By default, Node.js in the containers will trust the Kubernetes ServiceAccount CA
