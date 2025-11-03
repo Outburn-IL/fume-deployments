@@ -192,3 +192,13 @@ spec:
         resources:
           requests:
             storage: {{ .Values.storage.templates.size }}
+    - metadata:
+        name: fhir-cache
+        labels:
+          {{- include "fume.labels" . | nindent 10 }}
+      spec:
+        accessModes: [ "{{ .Values.storage.fhirCache.accessMode }}" ]
+        storageClassName: {{ .Values.storage.fhirCache.storageClass | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.storage.fhirCache.size }}
