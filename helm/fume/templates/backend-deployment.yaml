@@ -116,12 +116,22 @@ spec:
       volumes:
         - name: logs
           emptyDir: {}
+        # Snapshots volume: PVC when enabled, otherwise ephemeral emptyDir so path still exists
         - name: snapshots
+          {{- if .Values.storage.snapshots.enabled }}
           persistentVolumeClaim:
             claimName: {{ include "fume.fullname" . }}-snapshots
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        # Templates volume: PVC when enabled, otherwise ephemeral
         - name: templates
+          {{- if .Values.storage.templates.enabled }}
           persistentVolumeClaim:
             claimName: {{ include "fume.fullname" . }}-templates
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
         # FHIR package cache volume
         {{- if .Values.storage.fhirCache.enabled }}
         - name: fhir-cache
