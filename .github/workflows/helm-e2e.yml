@@ -80,6 +80,6 @@ jobs:
         if: always()
         run: |
           kubectl -n fume get all
-          kubectl -n fume describe pod fume-backend-0
-          kubectl -n fume get pvc
-          kubectl -n fume describe pvc snapshots-fume-backend-0
+          #kubectl -n fume describe pod fume-backend-0
+          #kubectl -n fume get pvc
+          #kubectl -n fume describe pvc snapshots-fume-backend-0
