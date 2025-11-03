@@ -85,7 +85,7 @@ Update the image settings in `values.yaml` (or override in `values.prod.yaml`) o
 image:
   backend:
     repository: outburnltd/fume-enterprise-server  # Private Docker Hub repository
-    tag: "1.7.2"
+    tag: "1.8.0"
   frontend:
     repository: outburnltd/fume-designer           # Private Docker Hub repository  
     tag: "2.1.3"
@@ -236,6 +236,8 @@ kubectl create secret generic fume-secrets \
   --from-literal=FHIR_SERVER_BASE="https://your-fhir-server.com/fhir" \
   --from-literal=FHIR_SERVER_UN="your-fhir-username" \
   --from-literal=FHIR_SERVER_PW="your-fhir-password" \
+  # Optional: add a private registry auth token if using configMap.FHIR_PACKAGE_REGISTRY_URL
+  # --from-literal=FHIR_PACKAGE_REGISTRY_TOKEN="s3cr3t-token" \
   --namespace fume
 ```
 
@@ -317,7 +319,7 @@ storage:
 
 2) Create or locate the PVC (if not using existingClaim). The chart will create `<release>-fhir-cache` when enabled.
 
-3) Load packages into the PVC. The backend mounts the cache at `/.fhir`, with the package directory at `/.fhir/packages`.
+3) Load packages into the PVC. The backend mounts the cache at `/usr/fume/fhir-packages`.
 
 You can copy data into the PVC in several ways:
 
@@ -335,21 +337,21 @@ kubectl run fhir-cache-loader --rm -it --restart=Never --image=busybox ^
 
 ```cmd
 # Copy your prepared cache directory structure (must contain a 'packages' subdir)
-# This copies into the mounted PVC at /.fhir
-kubectl -n fume cp ./cache/. <backend-pod-name>:/.fhir
+# This copies into the mounted PVC at /usr/fume/fhir-packages
+kubectl -n fume cp ./cache/. <backend-pod-name>:/usr/fume/fhir-packages
 ```
 
 Expected on disk inside the pod:
 
 ```
-/.fhir/
+/usr/fume/fhir-packages/
   packages/
     <package-name>@<version>/
     <another-package>@<version>/
 ```
 
 Notes:
-- The path `/.fhir` is writable in the container and mapped to the PVC when enabled.
+- The path `/usr/fume/fhir-packages` is writable in the container and mapped to the PVC when enabled.
 - If `fhirCache.enabled=false`, the chart uses an ephemeral emptyDir at the same path (default behavior).
 - For teams wanting direct, outside-cluster access to the cache, back the PVC with an RWX storage class (e.g., NFS/EFS/AzureFile) and set `storage.fhirCache.existingClaim` to a claim you also mount elsewhere.
 
@@ -357,15 +359,15 @@ Notes:
 
 1) Mirror from a warmed backend pod (simple)
 
-- Temporarily allow egress or run in a network that permits downloads once, let FUME populate `/.fhir/packages`.
+- Temporarily allow egress or run in a network that permits downloads once, let FUME populate `/usr/fume/fhir-packages`.
 - Then copy that directory out and reuse it:
 
 ```cmd
 # Copy packages from a warmed pod to your local machine
-kubectl -n fume cp <backend-pod-name>:/.fhir/packages ./packages
+kubectl -n fume cp <backend-pod-name>:/usr/fume/fhir-packages ./packages
 
 # Later, preload into another environment (with PVC enabled)
-kubectl -n fume cp ./packages/. <backend-pod-name>:/.fhir/packages
+kubectl -n fume cp ./packages/. <backend-pod-name>:/usr/fume/fhir-packages
 ```
 
 2) Use an RWX-backed existing PVC (transparent, multi-writer)
@@ -410,7 +412,7 @@ Then, from your workstation:
 kubectl -n fume cp .\packages\. fhir-cache-helper:/cache/packages
 ```
 
-All backend pods will see the files at `/.fhir/packages` (mounted from the same PVC), with no further changes needed.
+All backend pods will see the files at `/usr/fume/fhir-packages` (mounted from the same PVC), with no further changes needed.
 
 ## Environment-Specific Deployments
 
@@ -420,7 +422,7 @@ All backend pods will see the files at `/.fhir/packages` (mounted from the same 
 # Use default values with frontend enabled
 helm install fume-dev ./helm/fume \
   --namespace fume-dev \
-  --set image.backend.tag=1.7.2 \
+  --set image.backend.tag=1.8.0 \
   --set image.frontend.tag=2.1.3 \
   --set storage.snapshots.size=5Gi \
   --set env.FUME_DESIGNER_HEADLINE="FUME Designer - DEV" \
@@ -435,7 +437,7 @@ helm install fume-dev ./helm/fume \
 # Custom values for testing
 helm install fume-test ./helm/fume \
   --namespace fume-test \
-  --set image.backend.tag=1.7.2 \
+  --set image.backend.tag=1.8.0 \
   --set image.frontend.tag=2.1.3 \
   --set backend.replicaCount=2 \
   --set enableFrontend=true \
@@ -453,7 +455,7 @@ helm install fume-test ./helm/fume \
 helm install fume-prod ./helm/fume \
   -f ./helm/fume/values.prod.yaml \
   --namespace fume-prod \
-  --set image.backend.tag=1.7.2 \
+  --set image.backend.tag=1.8.0 \
   --set image.frontend.tag=2.1.3 \
   --set configMap.FUME_SERVER_URL="https://fume-api.company.com" \
   --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
@@ -669,13 +671,47 @@ probes:
 # Upgrade with new image version
 helm upgrade fume ./helm/fume \
   --namespace fume \
-  --set image.backend.tag=1.7.2 \
+  --set image.backend.tag=1.8.0 \
   --set image.frontend.tag=2.1.4
 
 # Upgrade with new values file
 helm upgrade fume ./helm/fume \
   -f ./helm/fume/values.prod.yaml \
   --namespace fume
+
+### FHIR Package Cache & Registry (New in Chart 0.3.0 / App 1.8.0)
+
+The backend now uses a fixed cache path: `/usr/fume/fhir-packages` exposed via the env var `FHIR_PACKAGE_CACHE_DIR` which the chart sets automatically. Do NOT override this variable.
+
+Behavior:
+- Persistent PVC mounted when `storage.fhirCache.enabled=true` (or `existingClaim` specified) providing `/usr/fume/fhir-packages` contents
+- Ephemeral `emptyDir` mounted when `storage.fhirCache.enabled=false`
+
+Optional private registry support:
+- `configMap.FHIR_PACKAGE_REGISTRY_URL` (non-secret) 	Base URL of internal registry
+- `FHIR_PACKAGE_REGISTRY_TOKEN` (secret) 	Add key to the `secrets.fume` Secret if auth required
+
+Example (Windows cmd):
+```cmd
+kubectl create secret generic fume-secrets ^
+  --from-literal=FHIR_SERVER_BASE="https://your-fhir-server.com/fhir" ^
+  --from-literal=FHIR_PACKAGE_REGISTRY_TOKEN="s3cr3t-token" ^
+  --namespace fume
+
+helm upgrade --install fume ./helm/fume ^
+  --namespace fume ^
+  --set image.backend.tag=1.8.0 ^
+  --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" ^
+  --set configMap.FHIR_PACKAGES="<org-specific-packages>" ^
+  --set configMap.FHIR_PACKAGE_REGISTRY_URL="https://packages.your-company.com"
+```
+
+Verification:
+```cmd
+kubectl -n fume exec deploy/fume-backend -- printenv FHIR_PACKAGE_CACHE_DIR
+kubectl -n fume exec deploy/fume-backend -- printenv FHIR_PACKAGE_REGISTRY_URL
+kubectl -n fume exec deploy/fume-backend -- ls -la /usr/fume/fhir-packages | head
+```
 ```
 
 ### Check Upgrade Status
@@ -747,7 +783,7 @@ kubectl get serviceaccount default -n fume -o yaml | grep -A3 imagePullSecrets
 kubectl describe pod -l app.kubernetes.io/name=fume --namespace fume
 
 # Test Docker Hub connectivity (replace with actual image)
-kubectl run test-pull --image=outburnltd/fume-enterprise-server:1.7.2 --image-pull-policy=Always --rm -it --restart=Never --namespace fume
+kubectl run test-pull --image=outburnltd/fume-enterprise-server:1.8.0 --image-pull-policy=Always --rm -it --restart=Never --namespace fume
 ```
 
 #### 5. x509 / certificate trust errors
@@ -817,7 +853,7 @@ For issues related to:
 
 - **Chart Version**: 0.1.1
  - **Chart Version**: 0.2.2
-- **App Version**: 1.7.2
+- **App Version**: 1.8.0
 - **Kubernetes Version**: 1.19+
 - **Helm Version**: 3.2.0+
 
