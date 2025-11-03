@@ -58,11 +58,10 @@ jobs:
         run: |
           kubectl create namespace fume
 
-      - name: Enable storageClass - local-path
+      - name: Check storage class
         run: |
           # Enable hostPath StorageClass
-          kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
-          kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+          kubectl get storageclass
         
       - name: Create required secrets (dummy)
         run: |
