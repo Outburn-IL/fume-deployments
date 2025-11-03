@@ -8,12 +8,12 @@ storage:
     enabled: false
     size: 5Gi
     accessMode: ReadWriteMany
-    storageClass: "local-path"
+    storageClass: "standard"
   templates:
     enabled: false
     size: 1Gi
     accessMode: ReadWriteMany
-    storageClass: "local-path"
+    storageClass: "standard"
 probes:
   backend:
     liveness:
