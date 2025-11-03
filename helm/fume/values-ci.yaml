@@ -7,12 +7,12 @@ storage:
   snapshots:
     enabled: false
     size: 5Gi
-    accessMode: ReadWriteMany
+    accessMode: ReadWriteOnce
     storageClass: "standard"
   templates:
     enabled: false
     size: 1Gi
-    accessMode: ReadWriteMany
+    accessMode: ReadWriteOnce
     storageClass: "standard"
 probes:
   backend:
