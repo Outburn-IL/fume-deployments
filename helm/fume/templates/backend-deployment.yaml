@@ -65,6 +65,9 @@ spec:
             failureThreshold: {{ .Values.probes.backend.readiness.failureThreshold }}
           {{- end }}
           env:
+            # Deterministic cache directory (persistent or ephemeral depending on storage.fhirCache.enabled)
+            - name: FHIR_PACKAGE_CACHE_DIR
+              value: "/usr/fume/fhir-packages"
             {{- range $key, $value := .Values.env }}
             {{- if $value }}
             - name: {{ $key }}
@@ -93,9 +96,9 @@ spec:
               mountPath: /usr/fume/snapshots
             - name: templates
               mountPath: /usr/fume/templates
-            # Writable cache directory for FHIR packages (fixes EACCES on '/.fhir/packages')
+            # Writable cache directory for FHIR packages (non-root friendly fixed path)
             - name: fhir-cache
-              mountPath: /.fhir
+              mountPath: /usr/fume/fhir-packages
             # Mount license as a single file
             - name: license
               mountPath: /usr/fume/license.key.lic
@@ -113,12 +116,22 @@ spec:
       volumes:
         - name: logs
           emptyDir: {}
+        # Snapshots volume: PVC when enabled, otherwise ephemeral emptyDir so path still exists
         - name: snapshots
+          {{- if .Values.storage.snapshots.enabled }}
           persistentVolumeClaim:
             claimName: {{ include "fume.fullname" . }}-snapshots
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        # Templates volume: PVC when enabled, otherwise ephemeral
         - name: templates
+          {{- if .Values.storage.templates.enabled }}
           persistentVolumeClaim:
             claimName: {{ include "fume.fullname" . }}-templates
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
         # FHIR package cache volume
         {{- if .Values.storage.fhirCache.enabled }}
         - name: fhir-cache

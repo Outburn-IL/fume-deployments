@@ -43,6 +43,7 @@ configMap:
   # CANONICAL_BASE_URL: "https://fume.your-company.com"  # REQUIRED: Set during deployment
   # FHIR_PACKAGES: ""                                   # REQUIRED: Comma-separated list (org/jurisdiction specific)
   # FUME_SERVER_URL: "https://fume-api.production.com"  # REQUIRED: Set during deployment
+  # FHIR_PACKAGE_REGISTRY_URL: "https://packages.your-company.com" # Optional: internal package registry URL
 
 # Auto-scaling enabled for production
 autoscaling:
