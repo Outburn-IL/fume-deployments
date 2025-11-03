@@ -58,11 +58,6 @@ jobs:
         run: |
           kubectl create namespace fume
 
-      - name: Check storage class
-        run: |
-          # Enable hostPath StorageClass
-          kubectl get storageclass
-        
       - name: Create required secrets (dummy)
         run: |
           # License secret with a dummy file key
@@ -85,6 +80,6 @@ jobs:
         if: always()
         run: |
           kubectl -n fume get all
-          kubectl -n fume describe pod fume-backend-0
-          kubectl -n fume get pvc
-          kubectl -n fume describe pvc snapshots-fume-backend-0
+          #kubectl -n fume describe pod fume-backend-0
+          #kubectl -n fume get pvc
+          #kubectl -n fume describe pvc snapshots-fume-backend-0
