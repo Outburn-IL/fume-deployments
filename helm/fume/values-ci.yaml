@@ -6,12 +6,17 @@ enableFrontend: false
 storage:
   snapshots:
     enabled: false
-    size: 5Gi
+    size: 10Gi
     accessMode: ReadWriteOnce
     storageClass: "standard"
   templates:
     enabled: false
-    size: 1Gi
+    size: 10Gi
+    accessMode: ReadWriteOnce
+    storageClass: "standard"
+  fhir-cache:
+    enabled: false
+    size: 10Gi
     accessMode: ReadWriteOnce
     storageClass: "standard"
 probes:
