@@ -1,0 +1,17 @@
+# this will generate hostnames like fume-backend-0.fume-backend-headless.fume.svc.cluster.local
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fume.fullname" . }}-backend-headless
+  labels:
+    {{- include "fume.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  clusterIP: None
+  ports:
+    - port: {{ .Values.service.backend.port }}
+      targetPort: {{ .Values.service.backend.targetPort }}
+      name: http
+  selector:
+    {{- include "fume.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: backend

@@ -1,14 +1,12 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ include "fume.fullname" . }}-backend
   labels:
     {{- include "fume.labels" . | nindent 4 }}
     app.kubernetes.io/component: backend
-    fume.outburn.dev/image: "{{ include "fume.labelValue" (printf "%s:%s" .Values.image.backend.repository (.Values.image.backend.tag | default .Chart.AppVersion)) }}"
-    fume.outburn.dev/tag: "{{ include "fume.labelValue" (.Values.image.backend.tag | default .Chart.AppVersion) }}"
-    app.kubernetes.io/component-version: "{{ include "fume.labelValue" (.Values.image.backend.tag | default .Chart.AppVersion) }}"
 spec:
+  serviceName: {{ include "fume.fullname" . }}-backend-headless
   {{- if not .Values.autoscaling.backend.enabled }}
   replicas: {{ .Values.backend.replicaCount }}
   {{- end }}
@@ -23,9 +21,6 @@ spec:
       labels:
         {{- include "fume.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: backend
-        fume.outburn.dev/image: "{{ include "fume.labelValue" (printf "%s:%s" .Values.image.backend.repository (.Values.image.backend.tag | default .Chart.AppVersion)) }}"
-        fume.outburn.dev/tag: "{{ include "fume.labelValue" (.Values.image.backend.tag | default .Chart.AppVersion) }}"
-        app.kubernetes.io/component-version: "{{ include "fume.labelValue" (.Values.image.backend.tag | default .Chart.AppVersion) }}"
     spec:
       {{- if .Values.image.pullSecret }}
       imagePullSecrets:
@@ -116,27 +111,23 @@ spec:
       volumes:
         - name: logs
           emptyDir: {}
-        # Snapshots volume: PVC when enabled, otherwise ephemeral emptyDir so path still exists
+        # When snapshots/templates persistence enabled their PVCs come from volumeClaimTemplates.
+        # Provide emptyDir only when disabled so mounts still exist.
+        {{- if not .Values.storage.snapshots.enabled }}
         - name: snapshots
-          {{- if .Values.storage.snapshots.enabled }}
-          persistentVolumeClaim:
-            claimName: {{ include "fume.fullname" . }}-snapshots
-          {{- else }}
           emptyDir: {}
-          {{- end }}
-        # Templates volume: PVC when enabled, otherwise ephemeral
+        {{- end }}
+        {{- if not .Values.storage.templates.enabled }}
         - name: templates
-          {{- if .Values.storage.templates.enabled }}
-          persistentVolumeClaim:
-            claimName: {{ include "fume.fullname" . }}-templates
-          {{- else }}
           emptyDir: {}
-          {{- end }}
-        # FHIR package cache volume
+        {{- end }}
+        # fhir-cache: persistent via claim template when enabled & no existingClaim; emptyDir otherwise or when existingClaim specified we mount that claim explicitly.
         {{- if .Values.storage.fhirCache.enabled }}
+        {{- if .Values.storage.fhirCache.existingClaim }}
         - name: fhir-cache
           persistentVolumeClaim:
-            claimName: {{ if .Values.storage.fhirCache.existingClaim }}{{ .Values.storage.fhirCache.existingClaim }}{{ else }}{{ include "fume.fullname" . }}-fhir-cache{{ end }}
+            claimName: {{ .Values.storage.fhirCache.existingClaim }}
+        {{- end }}
         {{- else }}
         - name: fhir-cache
           emptyDir: {}
@@ -176,3 +167,28 @@ spec:
           volumeMounts:
             - name: fhir-index
               mountPath: /index
+  {{- $claimTemplates := list }}
+  {{- if .Values.storage.snapshots.enabled }}
+  {{- $claimTemplates = append $claimTemplates (dict "name" "snapshots" "accessMode" .Values.storage.snapshots.accessMode "storageClass" .Values.storage.snapshots.storageClass "size" .Values.storage.snapshots.size) }}
+  {{- end }}
+  {{- if .Values.storage.templates.enabled }}
+  {{- $claimTemplates = append $claimTemplates (dict "name" "templates" "accessMode" .Values.storage.templates.accessMode "storageClass" .Values.storage.templates.storageClass "size" .Values.storage.templates.size) }}
+  {{- end }}
+  {{- if and .Values.storage.fhirCache.enabled (not .Values.storage.fhirCache.existingClaim) }}
+  {{- $claimTemplates = append $claimTemplates (dict "name" "fhir-cache" "accessMode" .Values.storage.fhirCache.accessMode "storageClass" .Values.storage.fhirCache.storageClass "size" .Values.storage.fhirCache.size) }}
+  {{- end }}
+  {{- if gt (len $claimTemplates) 0 }}
+  volumeClaimTemplates:
+  {{- range $ct := $claimTemplates }}
+    - metadata:
+        name: {{ $ct.name }}
+        labels:
+          {{- include "fume.labels" $ | nindent 10 }}
+      spec:
+        accessModes: [ "{{ $ct.accessMode }}" ]
+        storageClassName: {{ $ct.storageClass | quote }}
+        resources:
+          requests:
+            storage: {{ $ct.size }}
+  {{- end }}
+  {{- end }}

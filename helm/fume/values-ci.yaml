@@ -6,8 +6,19 @@ enableFrontend: false
 storage:
   snapshots:
     enabled: false
+    size: 10Gi
+    accessMode: ReadWriteOnce
+    storageClass: "standard"
   templates:
     enabled: false
+    size: 10Gi
+    accessMode: ReadWriteOnce
+    storageClass: "standard"
+  fhircache:
+    enabled: false
+    size: 10Gi
+    accessMode: ReadWriteOnce
+    storageClass: "standard"
 probes:
   backend:
     liveness:
