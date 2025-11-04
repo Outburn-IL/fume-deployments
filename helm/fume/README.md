@@ -832,14 +832,6 @@ For issues related to:
 - **FUME Application**: Refer to FUME Enterprise documentation
 - **Kubernetes**: Check your cluster administrator
 
-## Chart Information
-
-- **Chart Version**: 0.1.1
- - **Chart Version**: 0.2.2
-- **App Version**: 1.8.0
-- **Kubernetes Version**: 1.19+
-- **Helm Version**: 3.2.0+
-
 ## Values Reference
 
 For a complete list of configurable values, see:
