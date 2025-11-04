@@ -49,6 +49,24 @@ jobs:
         with:
           version: v1.29.4
 
+      - name: Detect available storage class for PVC tests
+        run: |
+          set -euo pipefail
+          echo "Listing storage classes:";
+          kubectl get storageclass || true
+          DEFAULT=$(kubectl get storageclass -o json | jq -r '.items[] | select(.metadata.annotations["storageclass.kubernetes.io/is-default-class"]=="true") | .metadata.name' | head -n1)
+          if [ -z "$DEFAULT" ]; then
+            for sc in standard local-path; do
+              if kubectl get storageclass "$sc" &>/dev/null; then DEFAULT=$sc; break; fi
+            done
+          fi
+          if [ -z "$DEFAULT" ]; then
+            echo "::error::No usable storage class found (looked for default, standard, local-path)."
+            exit 1
+          fi
+          echo "Detected storage class: $DEFAULT"
+          echo "STORAGE_CLASS=$DEFAULT" >> $GITHUB_ENV
+
       - name: Setup Helm
         uses: azure/setup-helm@v4
         with:
@@ -116,11 +134,13 @@ jobs:
           echo "Uninstall initial release (no persistence)"
           helm uninstall fume -n fume
           echo "Install fresh with persistent fhirCache enabled (adds new volumeClaimTemplate)"
+          if [ -z "${STORAGE_CLASS:-}" ]; then echo "::error::STORAGE_CLASS not set; previous detection step failed"; exit 1; fi
+          echo "Using storage class: $STORAGE_CLASS for fhirCache PVC"
           helm install fume ./helm/fume -n fume -f ./helm/fume/values-ci.yaml \
             --set storage.fhirCache.enabled=true \
             --set storage.fhirCache.size=1Gi \
             --set storage.fhirCache.accessMode=ReadWriteOnce \
-            --set storage.fhirCache.storageClass=""
+            --set storage.fhirCache.storageClass="$STORAGE_CLASS"
 
       - name: Wait for backend rollout (persistent fhirCache)
         run: |
