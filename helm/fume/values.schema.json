@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "image": {
+      "type": "object",
+      "properties": {
+        "backend": {
+          "type": "object",
+          "properties": {
+            "repository": {"type": "string"},
+            "tag": {"type": "string"}
+          },
+          "additionalProperties": false
+        },
+        "frontend": {
+          "type": "object",
+          "properties": {
+            "repository": {"type": "string"},
+            "tag": {"type": "string"}
+          },
+          "additionalProperties": false
+        },
+        "pullPolicy": {"type": "string"},
+        "pullSecret": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "backend": {
+          "type": "object",
+          "properties": {
+            "type": {"type": "string"},
+            "port": {"type": "integer"},
+            "targetPort": {"type": "integer"}
+          },
+          "additionalProperties": false
+        },
+        "frontend": {
+          "type": "object",
+          "properties": {
+            "type": {"type": "string"},
+            "port": {"type": "integer"},
+            "targetPort": {"type": "integer"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "storage": {
+      "type": "object",
+      "properties": {
+        "snapshots": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "size": {"type": "string"},
+            "storageClass": {"type": "string"},
+            "accessMode": {"type": "string"}
+          },
+          "additionalProperties": false
+        },
+        "templates": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "size": {"type": "string"},
+            "storageClass": {"type": "string"},
+            "accessMode": {"type": "string"}
+          },
+          "additionalProperties": false
+        },
+        "fhirCache": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "existingClaim": {"type": "string"},
+            "size": {"type": "string"},
+            "storageClass": {"type": "string"},
+            "accessMode": {"type": "string"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "probes": {
+      "type": "object",
+      "properties": {
+        "backend": {"type": "object"},
+        "frontend": {"type": "object"}
+      },
+      "additionalProperties": true
+    },
+    "env": {
+      "type": "object",
+      "properties": {
+        "SERVER_STATELESS": {"type": "string"},
+        "SERVER_PORT": {"type": "string", "pattern": "^[0-9]+$"},
+        "FHIR_VERSION": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "FHIR_SERVER_AUTH_TYPE": {"type": "string", "enum": ["NONE","BASIC"]},
+        "FUME_DESIGNER_HEADLINE": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "configMap": {
+      "type": "object",
+      "properties": {
+        "CANONICAL_BASE_URL": {"type": "string"},
+        "FUME_SERVER_URL": {"type": "string"},
+        "FHIR_PACKAGES": {"type": "string"},
+        "FHIR_PACKAGE_REGISTRY_URL": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "secrets": {
+      "type": "object",
+      "properties": {
+        "fume": {"type": "string"},
+        "license": {"type": "string"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
