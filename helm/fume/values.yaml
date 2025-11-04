@@ -103,9 +103,10 @@ storage:
     enabled: false
     # Either reference an existing claim by name, or let the chart create one (when enabled and existingClaim is empty)
     existingClaim: ""
-  size: 5Gi
-  storageClass: ""
-  accessMode: ReadWriteOnce
+    # Size/storageClass/accessMode apply when chart creates the PVC (existingClaim empty)
+    size: 5Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
 
   # No extra configuration needed for the index file; it's handled via emptyDir.
 
