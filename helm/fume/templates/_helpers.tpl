@@ -65,20 +65,25 @@ Create the name of the service account to use
 Validate required configuration values
 */}}
 {{- define "fume.validation" -}}
-{{- if not .Values.configMap.CANONICAL_BASE_URL }}
-{{- fail "CANONICAL_BASE_URL is required. Please set it via --set configMap.CANONICAL_BASE_URL=\"https://fume.your-company.com\"" }}
+{{- /*
+	 Defensive: avoid nil pointer when configMap key itself omitted (e.g. in reduced CI values file).
+	 Use local variable with default empty dict, then validate presence & non-empty value.
+*/ -}}
+{{- $cfg := .Values.configMap | default dict -}}
+{{- if or (not (hasKey $cfg "CANONICAL_BASE_URL")) (eq (index $cfg "CANONICAL_BASE_URL") "") }}
+	{{- fail "CANONICAL_BASE_URL is required. Set via --set configMap.CANONICAL_BASE_URL=\"https://fume.your-company.com\"" }}
 {{- end }}
-{{- if not .Values.configMap.FUME_SERVER_URL }}
-{{- fail "FUME_SERVER_URL is required. Please set it via --set configMap.FUME_SERVER_URL=\"https://your-fume-api.com\"" }}
+{{- if or (not (hasKey $cfg "FUME_SERVER_URL")) (eq (index $cfg "FUME_SERVER_URL") "") }}
+	{{- fail "FUME_SERVER_URL is required. Set via --set configMap.FUME_SERVER_URL=\"https://your-fume-api.com\"" }}
 {{- end }}
-{{- if not .Values.configMap.FHIR_PACKAGES }}
-{{- fail "FHIR_PACKAGES is required and must be provided by the deploying organization (context/jurisdiction specific). Example: --set configMap.FHIR_PACKAGES=\"pkg1@x.y.z,pkg2,pkg3@a.b.c\"" }}
+{{- if or (not (hasKey $cfg "FHIR_PACKAGES")) (eq (index $cfg "FHIR_PACKAGES") "") }}
+	{{- fail "FHIR_PACKAGES is required (jurisdiction/context specific). Example: --set configMap.FHIR_PACKAGES=\"pkg1@x.y.z,pkg2,pkg3@a.b.c\"" }}
 {{- end }}
-{{- if not .Values.secrets.fume }}
-{{- fail "Application secrets name is required. Please ensure you have created the 'fume-secrets' secret or update values.yaml" }}
+{{- if or (not .Values.secrets) (not .Values.secrets.fume) }}
+	{{- fail "Application secrets name (.Values.secrets.fume) is required. Create the 'fume-secrets' secret or update values." }}
 {{- end }}
-{{- if not .Values.secrets.license }}
-{{- fail "License secret name is required. Please ensure you have created the 'fume-license' secret or update values.yaml" }}
+{{- if or (not .Values.secrets) (not .Values.secrets.license) }}
+	{{- fail "License secret name (.Values.secrets.license) is required. Ensure secret 'fume-license' exists or update values." }}
 {{- end }}
 {{- end }}
 
