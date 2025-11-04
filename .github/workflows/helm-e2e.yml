@@ -190,8 +190,13 @@ jobs:
             --set storage.fhirCache.size=1Gi > rendered-cache.yaml
           # Fail if legacy misspelled key appears
           if grep -q 'fhircache' rendered-cache.yaml; then echo '::error::Found legacy fhircache token'; exit 1; fi
-          # Kubernetes API validation (requires cluster) using dry-run=server
-          kubectl apply --dry-run=server -n fume -f rendered-cache.yaml >/dev/null
+          # Use an ephemeral namespace so we validate create semantics, not patching existing immutable StatefulSet.
+          VALIDATE_NS=fume-validate
+          kubectl get ns "$VALIDATE_NS" >/dev/null 2>&1 || kubectl create namespace "$VALIDATE_NS"
+          # Server-side dry-run apply in isolated namespace (ignores existing installed release specs)
+          kubectl apply --dry-run=server -n "$VALIDATE_NS" -f rendered-cache.yaml >/dev/null
+          # Cleanup (best effort)
+          kubectl delete ns "$VALIDATE_NS" --wait=false >/dev/null 2>&1 || true
       - name: Basic smoke listing
         if: always()
         run: |
