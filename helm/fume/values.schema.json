@@ -98,11 +98,11 @@
     "env": {
       "type": "object",
       "properties": {
-    "SERVER_STATELESS": {"type": "string"},
-    "SERVER_PORT": {"type": "string", "pattern": "^[0-9]+$"},
-    "FHIR_VERSION": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
-    "FHIR_SERVER_AUTH_TYPE": {"type": "string", "enum": ["NONE","BASIC"]},
-    "FUME_DESIGNER_HEADLINE": {"type": "string"}
+        "SERVER_STATELESS": {"type": "string"},
+        "SERVER_PORT": {"type": "string", "pattern": "^[0-9]+$"},
+        "FHIR_VERSION": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "FHIR_SERVER_AUTH_TYPE": {"type": "string", "enum": ["NONE","BASIC"]},
+        "FUME_DESIGNER_HEADLINE": {"type": "string"}
       },
       "additionalProperties": true
     },
