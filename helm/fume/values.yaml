@@ -132,11 +132,6 @@ env:
   
   # Frontend (FUME Designer) variables
   FUME_DESIGNER_HEADLINE: "FUME Designer"
-  
-  # Proxy configuration (optional)
-  HTTP_PROXY: ""
-  HTTPS_PROXY: ""
-  NO_PROXY: "localhost,127.0.0.1"
 
 # ConfigMap data (non-secret values)
 # Note: Required values must be provided during installation
