@@ -193,12 +193,13 @@ spec:
           requests:
             storage: {{ .Values.storage.templates.size }}
     - metadata:
-        name: fhircache
+        # Use consistent hyphenated volume name matching volumeMounts and .Values.storage.fhirCache
+        name: fhir-cache
         labels:
           {{- include "fume.labels" . | nindent 10 }}
       spec:
-        accessModes: [ "{{ .Values.storage.fhircache.accessMode }}" ]
-        storageClassName: {{ .Values.storage.fhircache.storageClass | quote }}
+        accessModes: [ "{{ .Values.storage.fhirCache.accessMode }}" ]
+        storageClassName: {{ .Values.storage.fhirCache.storageClass | quote }}
         resources:
           requests:
-            storage: {{ .Values.storage.fhircache.size }}
+            storage: {{ .Values.storage.fhirCache.size }}
