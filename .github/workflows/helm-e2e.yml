@@ -184,7 +184,10 @@ jobs:
       - name: Server-side dry-run template validation (storage feature)
         run: |
           set -euo pipefail
-          helm template fume ./helm/fume --set storage.fhirCache.enabled=true --set storage.fhirCache.size=1Gi > rendered-cache.yaml
+          # Include CI values so required configMap + secrets keys exist; then override fhirCache toggles.
+          helm template fume ./helm/fume -f ./helm/fume/values-ci.yaml \
+            --set storage.fhirCache.enabled=true \
+            --set storage.fhirCache.size=1Gi > rendered-cache.yaml
           # Fail if legacy misspelled key appears
           if grep -q 'fhircache' rendered-cache.yaml; then echo '::error::Found legacy fhircache token'; exit 1; fi
           # Kubernetes API validation (requires cluster) using dry-run=server
