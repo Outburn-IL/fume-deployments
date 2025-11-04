@@ -26,6 +26,15 @@ jobs:
         run: |
           helm lint ./helm/fume -f ./helm/fume/values-ci.yaml
 
+      - name: Negative schema lint (expect failure on typo)
+        run: |
+          set -euo pipefail
+          # Use --set to introduce unknown key 'storage.fhircache.enabled=true' which schema should reject.
+          if helm lint ./helm/fume --set storage.fhircache.enabled=true >/tmp/lint-out.txt 2>&1; then
+            echo "::error::Expected helm lint to fail on unknown key storage.fhircache"; cat /tmp/lint-out.txt; exit 1; fi
+          echo "Negative lint test passed (unknown key storage.fhircache correctly caused lint failure)."
+          grep -qi 'fhircache' /tmp/lint-out.txt || echo "Note: failure output did not include token 'fhircache' (output below)" && cat /tmp/lint-out.txt
+
       - name: Render manifests (sanity)
         run: |
           helm template fume ./helm/fume -f ./helm/fume/values-ci.yaml > /dev/null
@@ -34,6 +43,13 @@ jobs:
     name: Install on KinD and verify rollout
     runs-on: ubuntu-latest
     needs: lint
+    # Required repository secrets:
+    #   DOCKERHUB_TOKEN:    DockerHub PAT/token (read-only scope recommended) for user 'outburnltd'
+    #   FUME_LICENSE_B64:   Base64-encoded contents of license.key.lic
+    # NOTE: Secrets are unavailable for PRs from forks; consider alternative trigger if needed.
+    env:
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      FUME_LICENSE_B64: ${{ secrets.FUME_LICENSE_B64 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -75,132 +91,140 @@ jobs:
       - name: Create namespace
         run: |
           kubectl create namespace fume
-
-      - name: Create required secrets (dummy)
+      - name: Validate required repo secrets present
         run: |
-          # License secret with a dummy file key
-          kubectl -n fume create secret generic fume-license \
-            --from-literal=license.key.lic=dummy
+          set -euo pipefail
+          for v in DOCKERHUB_TOKEN FUME_LICENSE_B64; do
+            if [ -z "${!v:-}" ]; then echo "::error::Missing required secret $v"; exit 1; fi
+          done
+          echo "All required secrets present."
 
-          # Application secrets (minimally required keys)
+      - name: Create Docker registry pull secret (fixed username outburnltd)
+        run: |
+          set -euo pipefail
+          kubectl -n fume create secret docker-registry regcred \
+            --docker-username="outburnltd" \
+            --docker-password="${DOCKERHUB_TOKEN}" \
+            --docker-server="https://index.docker.io/v1/"
+          echo "Created regcred image pull secret"
+
+      - name: Create license secret from base64
+        run: |
+          set -euo pipefail
+          printf "%s" "$FUME_LICENSE_B64" | base64 -d > license.key.lic || { echo "::error::Failed to decode FUME_LICENSE_B64"; exit 1; }
+          ls -l license.key.lic
+          kubectl -n fume create secret generic fume-license --from-file=license.key.lic
+          echo "License secret created"
+
+      - name: Create application config secret (minimal)
+        run: |
+          set -euo pipefail
           kubectl -n fume create secret generic fume-secrets \
             --from-literal=FHIR_SERVER_BASE="https://example.com/fhir"
+          echo "Application secret created"
 
-      - name: Install chart with CI overrides
-        run: |
-          # Install with CI overrides (current test scenario). This uses values-ci.yaml which intentionally keeps fhir cache disabled.
-          helm install fume ./helm/fume -n fume -f ./helm/fume/values-ci.yaml
-
-      - name: Wait for backend rollout (initial)
+      - name: Install chart (persistent fhirCache enabled)
         run: |
           set -euo pipefail
-          kubectl -n fume get statefulset fume-backend -o yaml | sed -n '1,120p'
-          kubectl -n fume rollout status statefulset/fume-backend --timeout=300s || {
-            echo "StatefulSet rollout failed. Gathering diagnostics...";
-            kubectl -n fume describe statefulset fume-backend || true;
-            kubectl -n fume get pods -l app.kubernetes.io/component=backend -o wide || true;
-            kubectl -n fume describe pod fume-backend-0 || true;
-            kubectl -n fume get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true;
-            exit 1;
-          }
-
-      - name: PVC and volume sanity (snapshots/templates disabled scenario)
-        run: |
-          set -euo pipefail
-          echo "List PVCs (expect none since snapshots/templates disabled):"
-          kubectl -n fume get pvc || true
-          echo "Check that pod mounted expected emptyDir volumes for logs,fhir-cache,index"
-          # The previous jq expression tried to serialize the emptyDir object directly, causing a jq CSV/TSV error.
-          # Convert volume type to a simple string descriptor instead.
-          kubectl -n fume get pod fume-backend-0 -o json | jq -r '.spec.volumes[] | . as $v | [$v.name, (if $v.emptyDir then "emptyDir" elif $v.persistentVolumeClaim then ("pvc:" + $v.persistentVolumeClaim.claimName) elif $v.secret then ("secret:" + $v.secret.secretName) else "other" end)] | @tsv'
-          echo "Assert expected emptyDir volumes present and no unexpected PVCs before enabling persistence"
-          # Fail if any pvc:* appears (none should before upgrade)
-          if kubectl -n fume get pod fume-backend-0 -o json | jq -r '.spec.volumes[] | select(.persistentVolumeClaim) | .name' | grep -q '.'; then
-            echo '::error::Found PVC-backed volume before persistence enabled';
-            kubectl -n fume get pod fume-backend-0 -o json | jq -r '.spec.volumes[] | select(.persistentVolumeClaim) | .name';
-            exit 1;
-          fi
-          echo "Describe pod (mount errors would appear as Warning events)"
-          kubectl -n fume describe pod fume-backend-0 | egrep -i 'Warning|Mount' || true
-
-      - name: Exec volume write test (emptyDir fhir-cache)
-        run: |
-          set -euo pipefail
-          kubectl -n fume exec fume-backend-0 -- sh -c 'echo test > /usr/fume/fhir-packages/ci-write && ls -l /usr/fume/fhir-packages/ci-write'
-
-      - name: Reinstall chart with persistent fhirCache (StatefulSet spec immutability workaround)
-        run: |
-          set -euo pipefail
-          echo "Uninstall initial release (no persistence)"
-          helm uninstall fume -n fume
-          echo "Install fresh with persistent fhirCache enabled (adds new volumeClaimTemplate)"
-          if [ -z "${STORAGE_CLASS:-}" ]; then echo "::error::STORAGE_CLASS not set; previous detection step failed"; exit 1; fi
-          echo "Using storage class: $STORAGE_CLASS for fhirCache PVC"
+          if [ -z "${STORAGE_CLASS:-}" ]; then echo "::error::STORAGE_CLASS not set; storage class detection failed"; exit 1; fi
+          echo "Installing chart with persistent fhirCache and real backend image"
           helm install fume ./helm/fume -n fume -f ./helm/fume/values-ci.yaml \
+            --set image.pullSecret=regcred \
             --set storage.fhirCache.enabled=true \
             --set storage.fhirCache.size=1Gi \
             --set storage.fhirCache.accessMode=ReadWriteOnce \
             --set storage.fhirCache.storageClass="$STORAGE_CLASS"
 
-      - name: Wait for backend rollout (persistent fhirCache)
+      - name: Wait for backend rollout
         run: |
           set -euo pipefail
-          kubectl -n fume rollout status statefulset/fume-backend --timeout=300s || {
-            echo "StatefulSet rollout (persistent fhirCache) failed. Diagnostics...";
+          kubectl -n fume rollout status statefulset/fume-backend --timeout=600s || {
+            echo "StatefulSet rollout failed. Diagnostics:";
             kubectl -n fume describe statefulset fume-backend || true;
             kubectl -n fume get pods -l app.kubernetes.io/component=backend -o wide || true;
             kubectl -n fume describe pod fume-backend-0 || true;
-            kubectl -n fume get pvc || true;
-            kubectl -n fume get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true;
+            kubectl -n fume get events --sort-by=.metadata.creationTimestamp | tail -n 100 || true;
             exit 1;
           }
 
-      - name: Assert fhir-cache PVC present and correctly bound
+      - name: Assert fhir-cache PVC present and bound
         run: |
           set -euo pipefail
-          echo "List PVCs:"; kubectl -n fume get pvc
-          # Expect a PVC whose name includes fhir-cache
+          kubectl -n fume get pvc
           if ! kubectl -n fume get pvc | grep -q 'fhir-cache'; then
-            echo "::error::Expected fhir-cache PVC after enabling storage.fhirCache.enabled=true"; exit 1; fi
-          # Check access mode and capacity not empty
-          kubectl -n fume get pvc -o json | jq -r '.items[] | select(.metadata.name | contains("fhir-cache")) | [.metadata.name, .spec.accessModes[0], .spec.resources.requests.storage] | @tsv'
-          # Verify volumeClaimTemplate name matches volumeMount
-          kubectl -n fume get statefulset fume-backend -o json | jq -r '.spec.volumeClaimTemplates[] | [.metadata.name] | @tsv'
+            echo "::error::Expected fhir-cache PVC after install"; exit 1; fi
+          kubectl -n fume get pvc -o json | jq -r '.items[] | select(.metadata.name | contains("fhir-cache")) | [.metadata.name, .status.phase, .spec.accessModes[0], .spec.resources.requests.storage] | @tsv'
+          kubectl -n fume get statefulset fume-backend -o json | jq -r '.spec.volumeClaimTemplates[].metadata.name'
           if ! kubectl -n fume get statefulset fume-backend -o json | jq -r '.spec.volumeClaimTemplates[].metadata.name' | grep -q '^fhir-cache$'; then
-            echo "::error::volumeClaimTemplate name mismatch (expected fhir-cache)"; exit 1; fi
+            echo "::error::Missing fhir-cache volumeClaimTemplate"; exit 1; fi
 
-      - name: Validate pod uses PVC (not emptyDir) for fhir-cache
+      - name: Application readiness & version check
         run: |
           set -euo pipefail
-          kubectl -n fume get pod fume-backend-0 -o json | jq -r '.spec.volumes[] | select(.name=="fhir-cache") | .persistentVolumeClaim.claimName' | grep -v '^$'
-          if kubectl -n fume get pod fume-backend-0 -o json | jq -e '.spec.volumes[] | select(.name=="fhir-cache" and has("emptyDir"))' >/dev/null; then
-            echo "::error::fhir-cache still emptyDir after enabling persistence"; exit 1; fi
+          mkdir -p /tmp/fume-artifacts
+          APP_VERSION=$(grep '^appVersion:' helm/fume/Chart.yaml | awk '{print $2}' | tr -d '"')
+          EXPECTED_PREFIX="fume-enterprise "
+          EXPECTED_VERSION="${EXPECTED_PREFIX}${APP_VERSION}"
+          echo "Expecting fume_version='${EXPECTED_VERSION}'"
+          # Poll internal service until JSON with fume_version appears or timeout (10 min)
+          for i in $(seq 1 120); do
+            CODE=$(kubectl -n fume run curl-tmp --image=curlimages/curl:8.7.1 --rm -i --restart=Never --command -- \
+              sh -c 'curl -s -o /tmp/body -w "%{http_code}" http://fume-backend.fume.svc.cluster.local:42420/' || true)
+            if [ "$CODE" = "200" ]; then
+              BODY=$(kubectl -n fume run curl-body --image=curlimages/curl:8.7.1 --rm -i --restart=Never --command -- sh -c 'curl -s http://fume-backend.fume.svc.cluster.local:42420/')
+              echo "$BODY" > /tmp/fume-artifacts/root-endpoint.json
+              if echo "$BODY" | jq -e '.fume_version' >/dev/null 2>&1; then
+                FUME_VERSION=$(echo "$BODY" | jq -r '.fume_version')
+                echo "Found fume_version=$FUME_VERSION"
+                if [ "$FUME_VERSION" != "$EXPECTED_VERSION" ]; then
+                  echo "::error::Version mismatch (expected $EXPECTED_VERSION got $FUME_VERSION)"; exit 1; fi
+                echo "Version matches expected appVersion"
+                break
+              fi
+            fi
+            if [ $i -eq 120 ]; then echo "::error::Timeout waiting for fume_version JSON"; exit 1; fi
+            sleep 5
+          done
 
-      - name: Exec write/read test on persistent fhir-cache
+      - name: Check fhirCache folder population
         run: |
           set -euo pipefail
-          kubectl -n fume exec fume-backend-0 -- sh -c 'echo persistent > /usr/fume/fhir-packages/ci-persistent && cat /usr/fume/fhir-packages/ci-persistent'
+          # Allow initial package load up to 5 minutes (poll every 15s)
+          TARGET_DIR='hl7.fhir.r4.core#4.0.1'
+          for i in $(seq 1 20); do
+            if kubectl -n fume exec fume-backend-0 -- sh -c "ls -1 /usr/fume/fhir-packages | grep -F '$TARGET_DIR'" >/dev/null 2>&1; then
+              echo "Found expected FHIR package directory: $TARGET_DIR";
+              kubectl -n fume exec fume-backend-0 -- sh -c "ls -1 /usr/fume/fhir-packages" > /tmp/fume-artifacts/fhir-cache-list.txt
+              exit 0;
+            fi
+            if [ $i -eq 20 ]; then echo "::error::Did not find $TARGET_DIR in fhir-cache"; exit 1; fi
+            sleep 15
+          done
 
-      - name: Server-side dry-run template validation (storage feature)
+      - name: Gather diagnostics on failure
+        if: failure()
         run: |
           set -euo pipefail
-          # Include CI values so required configMap + secrets keys exist; then override fhirCache toggles.
-          helm template fume ./helm/fume -f ./helm/fume/values-ci.yaml \
-            --set storage.fhirCache.enabled=true \
-            --set storage.fhirCache.size=1Gi > rendered-cache.yaml
-          # Fail if legacy misspelled key appears
-          if grep -q 'fhircache' rendered-cache.yaml; then echo '::error::Found legacy fhircache token'; exit 1; fi
-          # Use an ephemeral namespace so we validate create semantics, not patching existing immutable StatefulSet.
-          VALIDATE_NS=fume-validate
-          kubectl get ns "$VALIDATE_NS" >/dev/null 2>&1 || kubectl create namespace "$VALIDATE_NS"
-          # Server-side dry-run apply in isolated namespace (ignores existing installed release specs)
-          kubectl apply --dry-run=server -n "$VALIDATE_NS" -f rendered-cache.yaml >/dev/null
-          # Cleanup (best effort)
-          kubectl delete ns "$VALIDATE_NS" --wait=false >/dev/null 2>&1 || true
-      - name: Basic smoke listing
+          mkdir -p /tmp/fume-artifacts
+          echo "=== StatefulSet describe ===" > /tmp/fume-artifacts/statefulset.txt
+          kubectl -n fume describe statefulset fume-backend >> /tmp/fume-artifacts/statefulset.txt || true
+          echo "=== Pod describe ===" > /tmp/fume-artifacts/pod.txt
+          kubectl -n fume describe pod fume-backend-0 >> /tmp/fume-artifacts/pod.txt || true
+          echo "=== Pod logs (last 400 lines) ===" > /tmp/fume-artifacts/pod-logs.txt
+          kubectl -n fume logs statefulset/fume-backend --tail=400 >> /tmp/fume-artifacts/pod-logs.txt || true
+          echo "=== Application log files ===" > /tmp/fume-artifacts/app-logs.txt
+          kubectl -n fume exec fume-backend-0 -- sh -c 'for f in /usr/fume/logs/*.log; do echo "--- $f (last 200) ---"; tail -n 200 "$f"; done' >> /tmp/fume-artifacts/app-logs.txt || true
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fume-e2e-artifacts
+          path: /tmp/fume-artifacts
+
+      - name: Basic smoke listing (always)
         if: always()
         run: |
           kubectl -n fume get all
-          #kubectl -n fume describe pod fume-backend-0
-          #kubectl -n fume get pvc
-          #kubectl -n fume describe pvc snapshots-fume-backend-0
+          kubectl -n fume get pvc || true
+          kubectl -n fume get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true
