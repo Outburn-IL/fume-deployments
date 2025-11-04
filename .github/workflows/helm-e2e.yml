@@ -70,12 +70,76 @@ jobs:
 
       - name: Install chart with CI overrides
         run: |
+          # Install with CI overrides (current test scenario). This uses values-ci.yaml which intentionally keeps fhir cache disabled.
           helm install fume ./helm/fume -n fume -f ./helm/fume/values-ci.yaml
 
       - name: Wait for backend rollout
         run: |
           kubectl -n fume rollout status statefulset/fume-backend --timeout=120s
 
+      - name: PVC and volume sanity (snapshots/templates disabled scenario)
+        run: |
+          set -euo pipefail
+          echo "List PVCs (expect none since snapshots/templates disabled):"
+          kubectl -n fume get pvc || true
+          echo "Check that pod mounted expected emptyDir volumes for logs,fhir-cache,index"
+          kubectl -n fume get pod fume-backend-0 -o json | jq -r '.spec.volumes[] | [.name, (.emptyDir // "no-emptyDir")] | @tsv'
+          echo "Describe pod (mount errors would appear as Warning events)"
+          kubectl -n fume describe pod fume-backend-0 | egrep -i 'Warning|Mount' || true
+
+      - name: Exec volume write test (emptyDir fhir-cache)
+        run: |
+          set -euo pipefail
+          kubectl -n fume exec fume-backend-0 -- sh -c 'echo test > /usr/fume/fhir-packages/ci-write && ls -l /usr/fume/fhir-packages/ci-write'
+
+      - name: Upgrade enabling persistent fhirCache (exercise claim template)
+        run: |
+          set -euo pipefail
+          # Enable fhirCache with minimal size; legacy mis-nesting or wrong key casing should cause helm template or Kube validation failures we can catch.
+          helm upgrade fume ./helm/fume -n fume -f ./helm/fume/values-ci.yaml \
+            --set storage.fhirCache.enabled=true \
+            --set storage.fhirCache.size=1Gi \
+            --set storage.fhirCache.accessMode=ReadWriteOnce \
+            --set storage.fhirCache.storageClass=""
+
+      - name: Wait for backend rollout (fhirCache enabled)
+        run: |
+          kubectl -n fume rollout status statefulset/fume-backend --timeout=180s
+
+      - name: Assert fhir-cache PVC present and correctly bound
+        run: |
+          set -euo pipefail
+          echo "List PVCs:"; kubectl -n fume get pvc
+          # Expect a PVC whose name includes fhir-cache
+          if ! kubectl -n fume get pvc | grep -q 'fhir-cache'; then
+            echo "::error::Expected fhir-cache PVC after enabling storage.fhirCache.enabled=true"; exit 1; fi
+          # Check access mode and capacity not empty
+          kubectl -n fume get pvc -o json | jq -r '.items[] | select(.metadata.name | contains("fhir-cache")) | [.metadata.name, .spec.accessModes[0], .spec.resources.requests.storage] | @tsv'
+          # Verify volumeClaimTemplate name matches volumeMount
+          kubectl -n fume get statefulset fume-backend -o json | jq -r '.spec.volumeClaimTemplates[] | [.metadata.name] | @tsv'
+          if ! kubectl -n fume get statefulset fume-backend -o json | jq -r '.spec.volumeClaimTemplates[].metadata.name' | grep -q '^fhir-cache$'; then
+            echo "::error::volumeClaimTemplate name mismatch (expected fhir-cache)"; exit 1; fi
+
+      - name: Validate pod uses PVC (not emptyDir) for fhir-cache
+        run: |
+          set -euo pipefail
+          kubectl -n fume get pod fume-backend-0 -o json | jq -r '.spec.volumes[] | select(.name=="fhir-cache") | .persistentVolumeClaim.claimName' | grep -v '^$'
+          if kubectl -n fume get pod fume-backend-0 -o json | jq -e '.spec.volumes[] | select(.name=="fhir-cache" and has("emptyDir"))' >/dev/null; then
+            echo "::error::fhir-cache still emptyDir after enabling persistence"; exit 1; fi
+
+      - name: Exec write/read test on persistent fhir-cache
+        run: |
+          set -euo pipefail
+          kubectl -n fume exec fume-backend-0 -- sh -c 'echo persistent > /usr/fume/fhir-packages/ci-persistent && cat /usr/fume/fhir-packages/ci-persistent'
+
+      - name: Server-side dry-run template validation (storage feature)
+        run: |
+          set -euo pipefail
+          helm template fume ./helm/fume --set storage.fhirCache.enabled=true --set storage.fhirCache.size=1Gi > rendered-cache.yaml
+          # Fail if legacy misspelled key appears
+          if grep -q 'fhircache' rendered-cache.yaml; then echo '::error::Found legacy fhircache token'; exit 1; fi
+          # Kubernetes API validation (requires cluster) using dry-run=server
+          kubectl apply --dry-run=server -n fume -f rendered-cache.yaml >/dev/null
       - name: Basic smoke listing
         if: always()
         run: |
