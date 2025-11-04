@@ -92,7 +92,16 @@ jobs:
           echo "List PVCs (expect none since snapshots/templates disabled):"
           kubectl -n fume get pvc || true
           echo "Check that pod mounted expected emptyDir volumes for logs,fhir-cache,index"
-          kubectl -n fume get pod fume-backend-0 -o json | jq -r '.spec.volumes[] | [.name, (.emptyDir // "no-emptyDir")] | @tsv'
+          # The previous jq expression tried to serialize the emptyDir object directly, causing a jq CSV/TSV error.
+          # Convert volume type to a simple string descriptor instead.
+          kubectl -n fume get pod fume-backend-0 -o json | jq -r '.spec.volumes[] | . as $v | [$v.name, (if $v.emptyDir then "emptyDir" elif $v.persistentVolumeClaim then ("pvc:" + $v.persistentVolumeClaim.claimName) elif $v.secret then ("secret:" + $v.secret.secretName) else "other" end)] | @tsv'
+          echo "Assert expected emptyDir volumes present and no unexpected PVCs before enabling persistence"
+          # Fail if any pvc:* appears (none should before upgrade)
+          if kubectl -n fume get pod fume-backend-0 -o json | jq -r '.spec.volumes[] | select(.persistentVolumeClaim) | .name' | grep -q '.'; then
+            echo '::error::Found PVC-backed volume before persistence enabled';
+            kubectl -n fume get pod fume-backend-0 -o json | jq -r '.spec.volumes[] | select(.persistentVolumeClaim) | .name';
+            exit 1;
+          fi
           echo "Describe pod (mount errors would appear as Warning events)"
           kubectl -n fume describe pod fume-backend-0 | egrep -i 'Warning|Mount' || true
 
