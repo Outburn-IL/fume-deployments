@@ -110,21 +110,23 @@ jobs:
           set -euo pipefail
           kubectl -n fume exec fume-backend-0 -- sh -c 'echo test > /usr/fume/fhir-packages/ci-write && ls -l /usr/fume/fhir-packages/ci-write'
 
-      - name: Upgrade enabling persistent fhirCache (exercise claim template)
+      - name: Reinstall chart with persistent fhirCache (StatefulSet spec immutability workaround)
         run: |
           set -euo pipefail
-          # Enable fhirCache with minimal size; legacy mis-nesting or wrong key casing should cause helm template or Kube validation failures we can catch.
-          helm upgrade fume ./helm/fume -n fume -f ./helm/fume/values-ci.yaml \
+          echo "Uninstall initial release (no persistence)"
+          helm uninstall fume -n fume
+          echo "Install fresh with persistent fhirCache enabled (adds new volumeClaimTemplate)"
+          helm install fume ./helm/fume -n fume -f ./helm/fume/values-ci.yaml \
             --set storage.fhirCache.enabled=true \
             --set storage.fhirCache.size=1Gi \
             --set storage.fhirCache.accessMode=ReadWriteOnce \
             --set storage.fhirCache.storageClass=""
 
-      - name: Wait for backend rollout (fhirCache enabled)
+      - name: Wait for backend rollout (persistent fhirCache)
         run: |
           set -euo pipefail
           kubectl -n fume rollout status statefulset/fume-backend --timeout=300s || {
-            echo "StatefulSet rollout (fhirCache enabled) failed. Diagnostics...";
+            echo "StatefulSet rollout (persistent fhirCache) failed. Diagnostics...";
             kubectl -n fume describe statefulset fume-backend || true;
             kubectl -n fume get pods -l app.kubernetes.io/component=backend -o wide || true;
             kubectl -n fume describe pod fume-backend-0 || true;
