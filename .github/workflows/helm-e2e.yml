@@ -163,28 +163,61 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/fume-artifacts
           APP_VERSION=$(grep '^appVersion:' helm/fume/Chart.yaml | awk '{print $2}' | tr -d '"')
-          EXPECTED_PREFIX="fume-enterprise "
-          EXPECTED_VERSION="${EXPECTED_PREFIX}${APP_VERSION}"
+          EXPECTED_VERSION="fume-enterprise ${APP_VERSION}"
           echo "Expecting fume_version='${EXPECTED_VERSION}'"
-          # Poll internal service until JSON with fume_version appears or timeout (10 min)
-          for i in $(seq 1 120); do
-            CODE=$(kubectl -n fume run curl-tmp --image=curlimages/curl:8.7.1 --rm -i --restart=Never --command -- \
-              sh -c 'curl -s -o /tmp/body -w "%{http_code}" http://fume-backend.fume.svc.cluster.local:42420/' || true)
-            if [ "$CODE" = "200" ]; then
-              BODY=$(kubectl -n fume run curl-body --image=curlimages/curl:8.7.1 --rm -i --restart=Never --command -- sh -c 'curl -s http://fume-backend.fume.svc.cluster.local:42420/')
-              echo "$BODY" > /tmp/fume-artifacts/root-endpoint.json
+          # Create a single prober pod to avoid kubectl run overhead / hanging on name reuse.
+          if ! kubectl -n fume get pod fume-curl-prober >/dev/null 2>&1; then
+            kubectl -n fume run fume-curl-prober --image=curlimages/curl:8.7.1 --restart=Never --command -- sh -c 'sleep 3600' >/dev/null 2>&1 || true
+            # Wait a short period for image pull
+            kubectl -n fume wait --for=condition=Ready pod/fume-curl-prober --timeout=60s || echo "Prober pod not yet Ready; continuing (curl may still work)"
+          fi
+          START_TIME=$(date +%s)
+          TIMEOUT_SECONDS=240   # 4 minutes hard timeout
+          INTERVAL=5
+          ATTEMPT=0
+          SUCCESS=0
+          while true; do
+            NOW=$(date +%s)
+            ELAPSED=$((NOW-START_TIME))
+            if [ $ELAPSED -ge $TIMEOUT_SECONDS ]; then
+              echo "::error::Timeout (${TIMEOUT_SECONDS}s) waiting for application readiness";
+              # Capture quick diagnostics before failing
+              kubectl -n fume get pods -l app.kubernetes.io/component=backend -o wide || true
+              kubectl -n fume logs fume-backend-0 --tail=120 || true
+              break
+            fi
+            ATTEMPT=$((ATTEMPT+1))
+            echo "[Attempt $ATTEMPT] Querying root endpoint (elapsed ${ELAPSED}s)";
+            # Use exec into backend pod if curl exists there; fallback to prober pod.
+            if kubectl -n fume exec fume-backend-0 -- which curl >/dev/null 2>&1; then
+              RAW=$(kubectl -n fume exec fume-backend-0 -- curl -sS -m 4 --connect-timeout 2 -w "HTTPSTATUS:%{http_code}" http://localhost:42420/ || true)
+            else
+              RAW=$(kubectl -n fume exec fume-curl-prober -- sh -c 'curl -sS -m 4 --connect-timeout 2 -w "HTTPSTATUS:%{http_code}" http://fume-backend.fume.svc.cluster.local:42420/' || true)
+            fi
+            BODY="${RAW%HTTPSTATUS:*}"
+            STATUS="${RAW##*HTTPSTATUS:}"
+            if [ "$STATUS" = "200" ]; then
               if echo "$BODY" | jq -e '.fume_version' >/dev/null 2>&1; then
                 FUME_VERSION=$(echo "$BODY" | jq -r '.fume_version')
                 echo "Found fume_version=$FUME_VERSION"
+                echo "$BODY" > /tmp/fume-artifacts/root-endpoint.json
                 if [ "$FUME_VERSION" != "$EXPECTED_VERSION" ]; then
                   echo "::error::Version mismatch (expected $EXPECTED_VERSION got $FUME_VERSION)"; exit 1; fi
-                echo "Version matches expected appVersion"
+                echo "Version OK after ${ELAPSED}s (${ATTEMPT} attempts)"
+                SUCCESS=1
                 break
+              else
+                echo "Status 200 but missing fume_version key yet";
               fi
+            else
+              echo "Non-200 or no response (status='${STATUS:-none}')"
             fi
-            if [ $i -eq 120 ]; then echo "::error::Timeout waiting for fume_version JSON"; exit 1; fi
-            sleep 5
+            sleep $INTERVAL
           done
+          if [ $SUCCESS -ne 1 ]; then
+            echo "::error::Application readiness check failed within timeout"; exit 1; fi
+          # Clean up prober pod (best effort)
+          kubectl -n fume delete pod fume-curl-prober --ignore-not-found --grace-period=0 --force >/dev/null 2>&1 || true
 
       - name: Check fhirCache folder population
         run: |
