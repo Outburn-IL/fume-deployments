@@ -589,15 +589,6 @@ FUME automatically scans for `*.lic` files in its root directory (`/usr/fume/` f
 - Automatically detect and use valid license files
 - Ignore expired license files if multiple are present
 - Not require the `FUME_LICENSE` environment variable when files are mounted
-
-#### Proxy Configuration (Optional)
-
-```yaml
-env:
-  HTTP_PROXY: "http://proxy.company.com:8080"
-  HTTPS_PROXY: "http://proxy.company.com:8080"
-  NO_PROXY: "localhost,127.0.0.1,.company.com"
-
 ## Ingress Configuration
 
 ### Enable Ingress
@@ -813,14 +804,6 @@ kubectl logs -l app.kubernetes.io/component=frontend --namespace fume -f
 kubectl logs -l app.kubernetes.io/component=backend --namespace fume --previous
 ```
 
-### Debug Mode
-
-Enable debug logging:
-
-```yaml
-env:
-  LOG_LEVEL: "debug"
-```
 
 ## Uninstalling
 
