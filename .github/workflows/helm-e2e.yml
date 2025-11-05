@@ -129,7 +129,7 @@ jobs:
         run: |
           # Lightweight pod with curl for application probing; reused for version polling.
           if ! kubectl -n fume get pod curl-prober >/dev/null 2>&1; then
-            kubectl -n fume run curl-prober --image=curlimages/curl:8.4.0 --restart=Never --command -- sleep 900 || true
+            kubectl -n fume run curl-prober --image=curlimages/curl:8.7.1 --restart=Never --command -- sleep 900 || true
           fi
           # Wait for prober to be Running
           for i in $(seq 1 30); do
