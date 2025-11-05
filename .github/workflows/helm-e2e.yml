@@ -102,7 +102,8 @@ jobs:
       - name: Install chart (scenario)
         run: |
           set -euo pipefail
-          COMMON_OVERRIDES="--set image.pullSecret=regcred --set-string env.SERVER_STATELESS=true --set storage.fhirCache.enabled=true --set configMap.FHIR_PACKAGES=hl7.fhir.r4.core@4.0.1"
+          COMMON_OVERRIDES="--set image.pullSecret=regcred --set-string env.SERVER_STATELESS=true --set storage.fhirCache.enabled=true --set configMap.FHIR_PACKAGES=hl7.fhir.r4.core@4.0.1 \
+            --set storage.snapshots.storageClass=$STORAGE_CLASS --set storage.templates.storageClass=$STORAGE_CLASS --set storage.fhirCache.storageClass=$STORAGE_CLASS"
           if [ "${{ matrix.scenario }}" = "default" ]; then
             helm install fume ./helm/fume -n fume \
               $COMMON_OVERRIDES \
@@ -114,6 +115,13 @@ jobs:
               --set configMap.CANONICAL_BASE_URL="https://fume.prod.example.com" \
               --set configMap.FUME_SERVER_URL="https://api.prod.example.com";
           fi
+      - name: Post-install quick diagnostics
+        run: |
+          kubectl -n fume get pvc || true
+          echo '--- Backend pod(s) status:'
+          kubectl -n fume get pods -l app.kubernetes.io/component=backend -o wide || true
+          echo '--- Recent events:'
+          kubectl -n fume get events --sort-by=.metadata.creationTimestamp | tail -n 40 || true
       - name: Wait for backend rollout
         run: |
           kubectl -n fume rollout status statefulset/fume-backend --timeout=600s
