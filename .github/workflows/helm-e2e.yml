@@ -170,19 +170,32 @@ jobs:
             [ $i -eq 48 ] && echo "::error::Timeout waiting for version JSON" && exit 1
             sleep 5
           done
-          # Cleanup probe pod (best effort)
-          kubectl -n fume delete pod curl-prober --ignore-not-found --grace-period=0 --force || true
       - name: Frontend HTML smoke test (default only)
         if: matrix.scenario == 'default'
         run: |
           set -euo pipefail
-          RAW=$(kubectl -n fume exec fume-backend-0 -- curl -sS -m 4 --connect-timeout 2 -w "HTTPSTATUS:%{http_code}" http://fume-frontend.fume.svc.cluster.local:3000/ || true)
-          BODY="${RAW%HTTPSTATUS:*}"; STATUS="${RAW##*HTTPSTATUS:}"
-          if [ "$STATUS" != "200" ]; then echo "::error::Frontend root returned status $STATUS"; exit 1; fi
-          echo "$BODY" | head -n 40 > /tmp/frontend-sample.html
-          if ! echo "$BODY" | grep -qi "${FRONTEND_ASSERT_TOKEN}"; then
-            echo "::error::Did not find token '${FRONTEND_ASSERT_TOKEN}' in frontend HTML"; exit 1; fi
-          echo "Frontend HTML contains token '${FRONTEND_ASSERT_TOKEN}'"
+          TARGET_URL="http://fume-frontend.fume.svc.cluster.local:3000/"
+          SUCCESS=0
+          for i in $(seq 1 15); do
+            RAW=$(kubectl -n fume exec curl-prober -- curl -sS -m 5 --connect-timeout 3 -w "HTTPSTATUS:%{http_code}" "$TARGET_URL" || true)
+            BODY="${RAW%HTTPSTATUS:*}"; STATUS="${RAW##*HTTPSTATUS:}"
+            if [ "$STATUS" = "200" ]; then
+              echo "Attempt $i: 200 OK"
+              if echo "$BODY" | grep -qi "${FRONTEND_ASSERT_TOKEN}"; then
+                echo "$BODY" | head -n 40 > /tmp/frontend-sample.html
+                echo "Frontend HTML contains token '${FRONTEND_ASSERT_TOKEN}'"
+                SUCCESS=1
+                break
+              else
+                echo "Attempt $i: token '${FRONTEND_ASSERT_TOKEN}' not found yet"
+              fi
+            else
+              echo "Attempt $i: status=$STATUS (waiting)"
+            fi
+            [ $i -eq 15 ] && echo "::error::Frontend root did not become ready / token missing" && exit 1
+            sleep 4
+          done
+          [ $SUCCESS -eq 1 ] || { echo "::error::Frontend HTML validation failed"; exit 1; }
       - name: Check fhirCache folder population
         run: |
           set -euo pipefail
