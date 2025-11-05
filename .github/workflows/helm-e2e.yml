@@ -22,16 +22,26 @@ jobs:
           version: v3.14.4
       - name: Helm lint (base values)
         run: |
-          helm lint ./helm/fume
+          helm lint ./helm/fume \
+            --set configMap.CANONICAL_BASE_URL="https://lint.example.local" \
+            --set configMap.FUME_SERVER_URL="https://api.lint.example.local" \
+            --set configMap.FHIR_PACKAGES="hl7.fhir.r4.core@4.0.1"
       - name: Helm lint (prod overrides)
         run: |
-          helm lint ./helm/fume -f ./helm/fume/values.prod.yaml
+          helm lint ./helm/fume -f ./helm/fume/values.prod.yaml \
+            --set configMap.CANONICAL_BASE_URL="https://lint.prod.example.local" \
+            --set configMap.FUME_SERVER_URL="https://api.lint.prod.example.local" \
+            --set configMap.FHIR_PACKAGES="hl7.fhir.r4.core@4.0.1"
       - name: Negative schema lint (expect failure on unknown key)
         run: |
           set -euo pipefail
-          if helm lint ./helm/fume --set storage.fhircache.enabled=true >/tmp/lint-out.txt 2>&1; then
+          if helm lint ./helm/fume \
+            --set configMap.CANONICAL_BASE_URL="https://lint.neg.example.local" \
+            --set configMap.FUME_SERVER_URL="https://api.lint.neg.example.local" \
+            --set configMap.FHIR_PACKAGES="hl7.fhir.r4.core@4.0.1" \
+            --set storage.fhircache.enabled=true >/tmp/lint-out.txt 2>&1; then
             echo "::error::Expected helm lint to fail on unknown key storage.fhircache"; cat /tmp/lint-out.txt; exit 1; fi
-          echo "Negative lint test passed (unknown key rejected)."
+          echo "Negative lint test passed (unknown key storage.fhircache rejected)."
           grep -qi 'fhircache' /tmp/lint-out.txt || echo "Note: lint output did not include token 'fhircache'";
 
   e2e-matrix:
