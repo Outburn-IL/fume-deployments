@@ -125,23 +125,45 @@ jobs:
       - name: Wait for backend rollout
         run: |
           kubectl -n fume rollout status statefulset/fume-backend --timeout=600s
+      - name: Create curl prober pod
+        run: |
+          # Lightweight pod with curl for application probing; reused for version polling.
+          if ! kubectl -n fume get pod curl-prober >/dev/null 2>&1; then
+            kubectl -n fume run curl-prober --image=curlimages/curl:8.4.0 --restart=Never --command -- sleep 900 || true
+          fi
+          # Wait for prober to be Running
+          for i in $(seq 1 30); do
+            PHASE=$(kubectl -n fume get pod curl-prober -o jsonpath='{.status.phase}' 2>/dev/null || echo "NA")
+            [ "$PHASE" = "Running" ] && break
+            [ $i -eq 30 ] && echo "::error::curl-prober pod did not reach Running" && kubectl -n fume describe pod curl-prober || exit 1
+            sleep 2
+          done
       - name: Backend version check
         run: |
           set -euo pipefail
           APP_VERSION=$(grep '^appVersion:' helm/fume/Chart.yaml | awk '{print $2}' | tr -d '"')
           EXPECTED="fume-enterprise ${APP_VERSION}"
+          TARGET_URL="http://fume-backend.fume.svc.cluster.local:42420/"
           for i in $(seq 1 48); do
-            RAW=$(kubectl -n fume exec fume-backend-0 -- curl -sS -m 3 --connect-timeout 2 -w "HTTPSTATUS:%{http_code}" http://localhost:42420/ || true)
+            RAW=$(kubectl -n fume exec curl-prober -- curl -sS -m 3 --connect-timeout 2 -w "HTTPSTATUS:%{http_code}" "$TARGET_URL" || true)
             BODY="${RAW%HTTPSTATUS:*}"; STATUS="${RAW##*HTTPSTATUS:}"
-            if [ "$STATUS" = "200" ] && echo "$BODY" | jq -e '.fume_version' >/dev/null 2>&1; then
-              VER=$(echo "$BODY" | jq -r '.fume_version'); echo "Got version $VER";
-              [ "$VER" = "$EXPECTED" ] || { echo "::error::Version mismatch expected $EXPECTED got $VER"; exit 1; }
-              echo "$BODY" > /tmp/root-endpoint.json
-              break
+            if [ "$STATUS" = "200" ]; then
+              if echo "$BODY" | jq -e '.fume_version' >/dev/null 2>&1; then
+                VER=$(echo "$BODY" | jq -r '.fume_version'); echo "Got version $VER";
+                [ "$VER" = "$EXPECTED" ] || { echo "::error::Version mismatch expected $EXPECTED got $VER"; exit 1; }
+                printf "%s" "$BODY" > /tmp/root-endpoint.json
+                break
+              else
+                echo "200 OK but missing fume_version key (attempt $i)"
+              fi
+            else
+              echo "Attempt $i: status=$STATUS (waiting)"
             fi
             [ $i -eq 48 ] && echo "::error::Timeout waiting for version JSON" && exit 1
             sleep 5
           done
+          # Cleanup probe pod (best effort)
+          kubectl -n fume delete pod curl-prober --ignore-not-found --grace-period=0 --force || true
       - name: Frontend HTML smoke test (default only)
         if: matrix.scenario == 'default'
         run: |
