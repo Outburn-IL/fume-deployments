@@ -66,6 +66,14 @@ jobs:
           node_image: kindest/node:v1.29.4
       - name: Create namespace
         run: kubectl create ns fume
+      - name: Create application secrets (fume-secrets)
+        run: |
+          # Secret required by chart; validation ensures .Values.secrets.fume exists.
+          # Provide dummy FHIR server values since SERVER_STATELESS=true in CI.
+          kubectl -n fume create secret generic fume-secrets \
+            --from-literal=FHIR_SERVER_BASE="https://dummy.fhir.server/fhir" \
+            --from-literal=FHIR_SERVER_UN="dummy-user" \
+            --from-literal=FHIR_SERVER_PW="dummy-pass" || true
       - name: Create DockerHub pull secret
         run: |
           kubectl -n fume create secret docker-registry regcred \
