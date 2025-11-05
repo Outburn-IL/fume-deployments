@@ -39,11 +39,12 @@ env:
   FUME_DESIGNER_HEADLINE: "FUME Designer - PRODUCTION"
 
 # ConfigMap data for production - override defaults and set required values
-configMap:
-  # CANONICAL_BASE_URL: "https://fume.your-company.com"  # REQUIRED: Set during deployment
-  # FHIR_PACKAGES: ""                                   # REQUIRED: Comma-separated list (org/jurisdiction specific)
-  # FUME_SERVER_URL: "https://fume-api.production.com"  # REQUIRED: Set during deployment
-  # FHIR_PACKAGE_REGISTRY_URL: "https://packages.your-company.com" # Optional: internal package registry URL
+configMap: {}
+  # Override these at deploy time (none are set by default to force explicit configuration):
+  # CANONICAL_BASE_URL: "https://fume.your-company.com"
+  # FUME_SERVER_URL: "https://fume-api.production.com"
+  # FHIR_PACKAGES: "hl7.fhir.r4.core@4.0.1,fhir.tx.support.r4"
+  # FHIR_PACKAGE_REGISTRY_URL: "https://packages.your-company.com" # Optional
 
 # Auto-scaling enabled for production
 autoscaling:

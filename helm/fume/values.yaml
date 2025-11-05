@@ -135,11 +135,13 @@ env:
 
 # ConfigMap data (non-secret values)
 # Note: Required values must be provided during installation
-configMap:
-  # CANONICAL_BASE_URL: ""  # REQUIRED: Unique canonical identifier (typically FQDN) used in FHIR resources, e.g., https://fhir.company.com.
-  # FHIR_PACKAGES: ""      # REQUIRED: Comma-separated package list (context-specific) - set via --set configMap.FHIR_PACKAGES="pkg1@x.y.z,pkg2,pkg3@a.b.c"
-  # FUME_SERVER_URL: ""     # REQUIRED: Browser-facing URL to the backend; must be reachable from the user's network.
-  # FHIR_PACKAGE_REGISTRY_URL: "" # Optional: Custom FHIR package registry base URL. If omitted, default upstream registry is used.
+configMap: {}
+  # Provide required values at install time via --set or a values file.
+  # Examples:
+  # CANONICAL_BASE_URL: "https://fume.example.com"
+  # FUME_SERVER_URL: "https://api.example.com"
+  # FHIR_PACKAGES: "hl7.fhir.r4.core@4.0.1,fhir.tx.support.r4"
+  # FHIR_PACKAGE_REGISTRY_URL: "https://packages.example.com" # Optional
 
 # TLS/Trust configuration for Node.js clients inside the pods
 # By default, Node.js in the containers will trust the Kubernetes ServiceAccount CA
