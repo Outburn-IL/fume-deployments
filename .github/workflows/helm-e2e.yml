@@ -134,8 +134,16 @@ jobs:
           # Wait for prober to be Running
           for i in $(seq 1 30); do
             PHASE=$(kubectl -n fume get pod curl-prober -o jsonpath='{.status.phase}' 2>/dev/null || echo "NA")
-            [ "$PHASE" = "Running" ] && break
-            [ $i -eq 30 ] && echo "::error::curl-prober pod did not reach Running" && kubectl -n fume describe pod curl-prober || exit 1
+            if [ "$PHASE" = "Running" ]; then
+              echo "curl-prober pod Running (attempt $i)"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "::error::curl-prober pod did not reach Running (phase=$PHASE)";
+              kubectl -n fume describe pod curl-prober || true
+              kubectl -n fume logs curl-prober || true
+              exit 1
+            fi
             sleep 2
           done
       - name: Backend version check
