@@ -94,7 +94,7 @@ jobs:
       - name: Install chart (scenario)
         run: |
           set -euo pipefail
-          COMMON_OVERRIDES="--set image.pullSecret=regcred --set env.SERVER_STATELESS=true --set storage.fhirCache.enabled=true --set configMap.FHIR_PACKAGES=hl7.fhir.r4.core@4.0.1"
+          COMMON_OVERRIDES="--set image.pullSecret=regcred --set-string env.SERVER_STATELESS=true --set storage.fhirCache.enabled=true --set configMap.FHIR_PACKAGES=hl7.fhir.r4.core@4.0.1"
           if [ "${{ matrix.scenario }}" = "default" ]; then
             helm install fume ./helm/fume -n fume \
               $COMMON_OVERRIDES \
