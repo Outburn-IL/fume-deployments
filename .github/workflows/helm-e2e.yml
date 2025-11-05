@@ -45,7 +45,7 @@ jobs:
           grep -qi 'fhircache' /tmp/lint-out.txt || echo "Note: lint output did not include token 'fhircache'";
 
   e2e-matrix:
-    name: Scenario validation (default & prod)
+    name: Scenario validation
     runs-on: ubuntu-latest
     needs: lint
     strategy:
