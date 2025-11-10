@@ -2,8 +2,8 @@ apiVersion: v2
 name: fume
 description: A Helm chart for FUME Enterprise
 type: application
-version: 0.4.1
-appVersion: "1.8.0"
+version: 0.4.2
+appVersion: "1.8.1"
 maintainers:
   - name: Outburn Ltd.
 keywords:

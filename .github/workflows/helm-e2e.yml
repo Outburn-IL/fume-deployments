@@ -102,8 +102,11 @@ jobs:
       - name: Install chart (scenario)
         run: |
           set -euo pipefail
+          # Run containers as non-root to reproduce startup failure (no chart change needed)
           COMMON_OVERRIDES="--set image.pullSecret=regcred --set-string env.SERVER_STATELESS=true --set storage.fhirCache.enabled=true --set configMap.FHIR_PACKAGES=hl7.fhir.r4.core@4.0.1 \
-            --set storage.snapshots.storageClass=$STORAGE_CLASS --set storage.templates.storageClass=$STORAGE_CLASS --set storage.fhirCache.storageClass=$STORAGE_CLASS"
+            --set storage.snapshots.storageClass=$STORAGE_CLASS --set storage.templates.storageClass=$STORAGE_CLASS --set storage.fhirCache.storageClass=$STORAGE_CLASS \
+            --set podSecurityContext.runAsUser=65534 --set podSecurityContext.runAsGroup=65534 \
+            --set securityContext.runAsNonRoot=true"
           if [ "${{ matrix.scenario }}" = "default" ]; then
             helm install fume ./helm/fume -n fume \
               $COMMON_OVERRIDES \
@@ -232,3 +235,4 @@ jobs:
         if: always()
         run: |
           kubectl delete ns fume --wait=false || true
+
