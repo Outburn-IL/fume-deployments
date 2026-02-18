@@ -189,10 +189,11 @@ kubectl exec -n <namespace> deploy/<backend-deploy> -- ls -la /usr/fume/fhir-pac
 kubectl exec -n <namespace> deploy/<backend-deploy> -- ls -la /usr/fume/templates | head
 kubectl exec -n <namespace> deploy/<backend-deploy> -- ls -la /usr/fume/mappings | head  # if enabled
 
+```
+
 ## License note
 
 License files are safe to share between pods. Prefer mounting the license from a Kubernetes Secret to each pod (no per-pod state required).
-```
 
 ## Rollback
 
