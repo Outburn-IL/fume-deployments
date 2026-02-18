@@ -101,8 +101,9 @@ jobs:
           set -euo pipefail
           # Run containers as non-root to reproduce startup failure (no chart change needed)
           COMMON_OVERRIDES="--set image.pullSecret=regcred --set storage.fhirCache.enabled=true --set configMap.FHIR_PACKAGES=hl7.fhir.r4.core@4.0.1 \
+            --set env.FHIR_SERVER_AUTH_TYPE=NONE \
             --set storage.templates.storageClass=$STORAGE_CLASS --set storage.fhirCache.storageClass=$STORAGE_CLASS \
-            --set podSecurityContext.runAsUser=65534 --set podSecurityContext.runAsGroup=65534 \
+            --set podSecurityContext.runAsUser=65534 --set podSecurityContext.runAsGroup=65534 --set podSecurityContext.fsGroup=65534 --set podSecurityContext.fsGroupChangePolicy=OnRootMismatch \
             --set securityContext.runAsNonRoot=true"
           if [ "${{ matrix.scenario }}" = "default" ]; then
             helm install fume ./helm/fume -n fume \
@@ -128,7 +129,15 @@ jobs:
           kubectl -n fume get events --sort-by=.metadata.creationTimestamp | tail -n 40 || true
       - name: Wait for backend rollout
         run: |
-          kubectl -n fume rollout status deployment/fume-backend --timeout=600s
+          set -euo pipefail
+          if ! kubectl -n fume rollout status deployment/fume-backend --timeout=600s; then
+            echo '--- Rollout failed. Deployment + pod diagnostics:'
+            kubectl -n fume describe deployment fume-backend || true
+            kubectl -n fume get pods -l app.kubernetes.io/component=backend -o wide || true
+            kubectl -n fume describe pods -l app.kubernetes.io/component=backend || true
+            kubectl -n fume get events --sort-by=.metadata.creationTimestamp | tail -n 80 || true
+            exit 1
+          fi
       - name: Create curl prober pod
         run: |
           # Lightweight pod with curl for application probing; reused for version polling.
