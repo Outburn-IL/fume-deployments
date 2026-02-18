@@ -73,8 +73,10 @@ Validate required configuration values
 {{- if or (not (hasKey $cfg "CANONICAL_BASE_URL")) (eq (index $cfg "CANONICAL_BASE_URL") "") }}
 	{{- fail "CANONICAL_BASE_URL is required. Set via --set configMap.CANONICAL_BASE_URL=\"https://fume.your-company.com\"" }}
 {{- end }}
+{{- if .Values.enableFrontend }}
 {{- if or (not (hasKey $cfg "FUME_SERVER_URL")) (eq (index $cfg "FUME_SERVER_URL") "") }}
-	{{- fail "FUME_SERVER_URL is required. Set via --set configMap.FUME_SERVER_URL=\"https://your-fume-api.com\"" }}
+	{{- fail "FUME_SERVER_URL is required when enableFrontend=true. Set via --set configMap.FUME_SERVER_URL=\"https://your-fume-api.com\"" }}
+{{- end }}
 {{- end }}
 {{- if or (not (hasKey $cfg "FHIR_PACKAGES")) (eq (index $cfg "FHIR_PACKAGES") "") }}
 	{{- fail "FHIR_PACKAGES is required (jurisdiction/context specific). Example: --set configMap.FHIR_PACKAGES=\"pkg1@x.y.z,pkg2,pkg3@a.b.c\"" }}

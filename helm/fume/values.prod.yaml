@@ -25,11 +25,18 @@ backend:
 
 # Storage configuration for production
 storage:
-  snapshots:
-    size: 100Gi
-    storageClass: "ssd"
   templates:
+    enabled: true
+    # For multi-replica backends, templates storage must be RWX-capable (or run replicaCount=1).
+    accessMode: ReadWriteMany
     size: 5Gi
+    storageClass: "ssd"
+
+  # Recommended for production: persistent shared package cache (also holds snapshot/terminology caches in v3)
+  fhirCache:
+    enabled: true
+    accessMode: ReadWriteMany
+    size: 100Gi
     storageClass: "ssd"
 
 # Environment variables for production

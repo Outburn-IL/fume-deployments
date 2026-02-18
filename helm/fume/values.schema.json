@@ -77,29 +77,14 @@
     "storage": {
       "type": "object",
       "properties": {
-        "snapshots": {
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean"
-            },
-            "size": {
-              "type": "string"
-            },
-            "storageClass": {
-              "type": "string"
-            },
-            "accessMode": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
-        },
         "templates": {
           "type": "object",
           "properties": {
             "enabled": {
               "type": "boolean"
+            },
+            "existingClaim": {
+              "type": "string"
             },
             "size": {
               "type": "string"
@@ -114,6 +99,27 @@
           "additionalProperties": false
         },
         "fhirCache": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "existingClaim": {
+              "type": "string"
+            },
+            "size": {
+              "type": "string"
+            },
+            "storageClass": {
+              "type": "string"
+            },
+            "accessMode": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "mappings": {
           "type": "object",
           "properties": {
             "enabled": {
@@ -152,13 +158,36 @@
     "env": {
       "type": "object",
       "properties": {
-        "SERVER_STATELESS": {
-          "type": [
-            "string",
-            "boolean"
+        "SERVER_PORT": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "FUME_REQUEST_BODY_LIMIT": {
+          "type": "string"
+        },
+        "LOG_LEVEL": {
+          "type": "string",
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error",
+            "silent"
           ]
         },
-        "SERVER_PORT": {
+        "FUME_EVAL_THROW_LEVEL": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "FUME_EVAL_LOG_LEVEL": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "FUME_EVAL_DIAG_COLLECT_LEVEL": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "FUME_EVAL_VALIDATION_LEVEL": {
           "type": "string",
           "pattern": "^[0-9]+$"
         },
@@ -171,6 +200,39 @@
           "enum": [
             "NONE",
             "BASIC"
+          ]
+        },
+        "FHIR_SERVER_TIMEOUT": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "MAPPINGS_FILE_EXTENSION": {
+          "type": "string"
+        },
+        "MAPPINGS_FILE_POLLING_INTERVAL_MS": {
+          "type": "string",
+          "pattern": "^-?[0-9]+$"
+        },
+        "MAPPINGS_SERVER_POLLING_INTERVAL_MS": {
+          "type": "string",
+          "pattern": "^-?[0-9]+$"
+        },
+        "MAPPINGS_FORCED_RESYNC_INTERVAL_MS": {
+          "type": "string",
+          "pattern": "^-?[0-9]+$"
+        },
+        "MAPPINGS_PRIMARY_WRITABLE_STORE": {
+          "type": "string",
+          "enum": [
+            "file",
+            "server",
+            "none"
+          ]
+        },
+        "PREBUILD_SNAPSHOTS": {
+          "type": [
+            "string",
+            "boolean"
           ]
         },
         "FUME_DESIGNER_HEADLINE": {

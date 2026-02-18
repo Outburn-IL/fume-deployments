@@ -1,4 +1,6 @@
-# this will generate hostnames like fume-backend-0.fume-backend-headless.fume.svc.cluster.local
+{{- if .Values.backend.headlessService.enabled }}
+# This will generate hostnames like fume-backend-0.fume-backend-headless.fume.svc.cluster.local
+# It is primarily useful for StatefulSet stable identities.
 apiVersion: v1
 kind: Service
 metadata:
@@ -15,3 +17,4 @@ spec:
   selector:
     {{- include "fume.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: backend
+{{- end }}

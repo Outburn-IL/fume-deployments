@@ -9,7 +9,7 @@ metadata:
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
-    kind: StatefulSet
+    kind: Deployment
     name: {{ include "fume.fullname" . }}-backend
   minReplicas: {{ .Values.autoscaling.backend.minReplicas }}
   maxReplicas: {{ .Values.autoscaling.backend.maxReplicas }}
