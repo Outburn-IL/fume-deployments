@@ -130,7 +130,7 @@ jobs:
       - name: Wait for backend rollout
         run: |
           set -euo pipefail
-          if ! kubectl -n fume rollout status deployment/fume-backend --timeout=600s; then
+          if ! kubectl -n fume rollout status deployment/fume-backend --timeout=400s; then
             echo '--- Rollout failed. Deployment + pod diagnostics:'
             kubectl -n fume describe deployment fume-backend || true
             kubectl -n fume get pods -l app.kubernetes.io/component=backend -o wide || true
