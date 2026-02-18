@@ -85,10 +85,10 @@ Update the image settings in `values.yaml` (or override in `values.prod.yaml`) o
 image:
   backend:
     repository: outburnltd/fume-enterprise-server  # Private Docker Hub repository
-    tag: "1.8.0"
+    tag: "3.0.0"
   frontend:
     repository: outburnltd/fume-designer           # Private Docker Hub repository  
-    tag: "2.1.3"
+    tag: "3.0.0"
   pullPolicy: IfNotPresent
   pullSecret: "dockerhub-secret"  # Optional: set if your cluster/namespace doesn't already provide pull credentials
 ```
