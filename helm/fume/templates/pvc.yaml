@@ -2,51 +2,51 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-	name: {{ include "fume.fullname" . }}-templates
-	labels:
-		{{- include "fume.labels" . | nindent 4 }}
+  name: {{ include "fume.fullname" . }}-templates
+  labels:
+    {{- include "fume.labels" . | nindent 4 }}
 spec:
-	accessModes: [ "{{ .Values.storage.templates.accessMode }}" ]
-	{{- if .Values.storage.templates.storageClass }}
-	storageClassName: {{ .Values.storage.templates.storageClass | quote }}
-	{{- end }}
-	resources:
-		requests:
-			storage: {{ .Values.storage.templates.size }}
----
+  accessModes: [ "{{ .Values.storage.templates.accessMode }}" ]
+  {{- if .Values.storage.templates.storageClass }}
+  storageClassName: {{ .Values.storage.templates.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.templates.size }}
 {{- end }}
 
 {{- if and .Values.storage.fhirCache.enabled (not .Values.storage.fhirCache.existingClaim) }}
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-	name: {{ include "fume.fullname" . }}-fhir-cache
-	labels:
-		{{- include "fume.labels" . | nindent 4 }}
+  name: {{ include "fume.fullname" . }}-fhir-cache
+  labels:
+    {{- include "fume.labels" . | nindent 4 }}
 spec:
-	accessModes: [ "{{ .Values.storage.fhirCache.accessMode }}" ]
-	{{- if .Values.storage.fhirCache.storageClass }}
-	storageClassName: {{ .Values.storage.fhirCache.storageClass | quote }}
-	{{- end }}
-	resources:
-		requests:
-			storage: {{ .Values.storage.fhirCache.size }}
----
+  accessModes: [ "{{ .Values.storage.fhirCache.accessMode }}" ]
+  {{- if .Values.storage.fhirCache.storageClass }}
+  storageClassName: {{ .Values.storage.fhirCache.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.fhirCache.size }}
 {{- end }}
 
 {{- if and .Values.storage.mappings.enabled (not .Values.storage.mappings.existingClaim) }}
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-	name: {{ include "fume.fullname" . }}-mappings
-	labels:
-		{{- include "fume.labels" . | nindent 4 }}
+  name: {{ include "fume.fullname" . }}-mappings
+  labels:
+    {{- include "fume.labels" . | nindent 4 }}
 spec:
-	accessModes: [ "{{ .Values.storage.mappings.accessMode }}" ]
-	{{- if .Values.storage.mappings.storageClass }}
-	storageClassName: {{ .Values.storage.mappings.storageClass | quote }}
-	{{- end }}
-	resources:
-		requests:
-			storage: {{ .Values.storage.mappings.size }}
+  accessModes: [ "{{ .Values.storage.mappings.accessMode }}" ]
+  {{- if .Values.storage.mappings.storageClass }}
+  storageClassName: {{ .Values.storage.mappings.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.mappings.size }}
 {{- end }}
