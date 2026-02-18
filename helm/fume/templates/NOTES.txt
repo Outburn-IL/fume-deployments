@@ -30,11 +30,16 @@
    {{- end }}
 
 3. Storage:
-   {{- if .Values.storage.snapshots.enabled }}
-   - Snapshots PVC: {{ include "fume.fullname" . }}-snapshots ({{ .Values.storage.snapshots.size }})
-   {{- end }}
    {{- if .Values.storage.templates.enabled }}
-   - Templates PVC: {{ include "fume.fullname" . }}-templates ({{ .Values.storage.templates.size }})
+   - Templates PVC: {{ .Values.storage.templates.existingClaim | default (printf "%s-templates" (include "fume.fullname" .)) }} ({{ .Values.storage.templates.size }})
+   {{- end }}
+   {{- if .Values.storage.fhirCache.enabled }}
+   - FHIR cache PVC: {{ .Values.storage.fhirCache.existingClaim | default (printf "%s-fhir-cache" (include "fume.fullname" .)) }} ({{ .Values.storage.fhirCache.size }})
+   {{- else }}
+   - FHIR cache: emptyDir (ephemeral)
+   {{- end }}
+   {{- if .Values.storage.mappings.enabled }}
+   - Mappings PVC: {{ .Values.storage.mappings.existingClaim | default (printf "%s-mappings" (include "fume.fullname" .)) }} ({{ .Values.storage.mappings.size }})
    {{- end }}
    - Logs: EmptyDir volumes
 

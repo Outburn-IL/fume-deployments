@@ -20,7 +20,7 @@ This Helm chart deploys the FUME application stack on Kubernetes, including:
 
 - Kubernetes 1.19+
 - Helm 3.2.0+
-- Persistent Volume support (for snapshots and templates storage)
+- Persistent Volume support (for templates and optional shared caches)
 - Valid FUME Enterprise license file
 
 ## Quick Start
@@ -262,14 +262,10 @@ The chart creates PVCs for persistent data:
 
 ```yaml
 storage:
-  snapshots:
-    enabled: true
-    size: 5Gi
-    storageClass: "ssd"     # Use your preferred storage class
-    accessMode: ReadWriteOnce
-  
   templates:
     enabled: true
+    # If you manage this PVC externally, set its name here; otherwise the chart will create `<release>-templates`.
+    existingClaim: ""
     size: 1Gi
     storageClass: "ssd"
     accessMode: ReadWriteOnce
@@ -283,6 +279,14 @@ storage:
     size: 5Gi
     storageClass: "ssd"
     accessMode: ReadWriteOnce
+
+  # Optional: Persist the mappings folder for file-backed mappings.
+  mappings:
+    enabled: false
+    existingClaim: ""
+    size: 1Gi
+    storageClass: "ssd"
+    accessMode: ReadWriteMany
 ```
 
 ### Storage Classes
@@ -424,7 +428,6 @@ helm install fume-dev ./helm/fume \
   --namespace fume-dev \
   --set image.backend.tag=1.8.0 \
   --set image.frontend.tag=2.1.3 \
-  --set storage.snapshots.size=5Gi \
   --set env.FUME_DESIGNER_HEADLINE="FUME Designer - DEV" \
   --set configMap.FUME_SERVER_URL="http://localhost:42420" \
   --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
@@ -644,17 +647,22 @@ probes:
   backend:
     liveness:
       enabled: true
-      path: /              # Adjust if FUME has specific health endpoint
+      path: /health
       initialDelaySeconds: 30
       periodSeconds: 10
     readiness:
       enabled: true
-      path: /
+      path: /health
       initialDelaySeconds: 5
       periodSeconds: 5
 ```
 
 ## Upgrading
+
+Important upgrade note (major versions): the backend workload type changed from `StatefulSet` to `Deployment`. This is not always an in-place Helm upgrade.
+
+- Migration guide: `fume-deployments/MIGRATING_TO_FUME_MAJOR.md`
+- Env var matrix (self-contained): `fume-deployments/ENVIRONMENT_VARIABLES.md`
 
 ### Upgrade the Release
 

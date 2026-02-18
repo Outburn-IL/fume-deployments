@@ -36,6 +36,12 @@ backend:
   tolerations: []
   affinity: {}
 
+  # Optional: create a backend headless Service (clusterIP: None).
+  # This is primarily useful for StatefulSet stable identities and is usually unnecessary
+  # with the backend Deployment model.
+  headlessService:
+    enabled: false
+
 # Frontend configuration (when enabled)
 frontend:
   replicaCount: 1
@@ -86,13 +92,10 @@ ingress:
 
 # Storage configuration
 storage:
-  snapshots:
-    enabled: true
-    size: 5Gi
-    storageClass: ""
-    accessMode: ReadWriteOnce
   templates:
     enabled: true
+    # Either reference an existing claim by name, or let the chart create one (when enabled and existingClaim is empty)
+    existingClaim: ""
     size: 1Gi
     storageClass: ""
     accessMode: ReadWriteOnce
@@ -107,6 +110,16 @@ storage:
     size: 5Gi
     storageClass: ""
     accessMode: ReadWriteOnce
+
+  # Optional persistent mappings folder for file-backed mappings.
+  # When enabled, the backend mounts a PVC at /usr/fume/mappings and the chart sets
+  # MAPPINGS_FOLDER=/usr/fume/mappings unless you override it explicitly in env.
+  mappings:
+    enabled: false
+    existingClaim: ""
+    size: 1Gi
+    storageClass: ""
+    accessMode: ReadWriteMany
 
   # No extra configuration needed for the index file; it's handled via emptyDir.
 
@@ -165,14 +178,14 @@ probes:
   backend:
     liveness:
       enabled: true
-      path: /
+      path: /health
       initialDelaySeconds: 120  # 2 minutes for warm start, will be faster on restart
       periodSeconds: 30
       timeoutSeconds: 10
       failureThreshold: 10      # Allow for slow startup (10 * 30s = 5min tolerance)
     readiness:
       enabled: true
-      path: /
+      path: /health
       initialDelaySeconds: 60   # 1 minute initial delay
       periodSeconds: 10
       timeoutSeconds: 5

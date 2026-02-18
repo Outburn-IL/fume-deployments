@@ -1,12 +1,11 @@
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: {{ include "fume.fullname" . }}-backend
   labels:
     {{- include "fume.labels" . | nindent 4 }}
     app.kubernetes.io/component: backend
 spec:
-  serviceName: {{ include "fume.fullname" . }}-backend-headless
   {{- if not .Values.autoscaling.backend.enabled }}
   replicas: {{ .Values.backend.replicaCount }}
   {{- end }}
@@ -63,6 +62,11 @@ spec:
             # Deterministic cache directory (persistent or ephemeral depending on storage.fhirCache.enabled)
             - name: FHIR_PACKAGE_CACHE_DIR
               value: "/usr/fume/fhir-packages"
+            {{- $env := .Values.env | default dict }}
+            {{- if and .Values.storage.mappings.enabled (not (hasKey $env "MAPPINGS_FOLDER")) }}
+            - name: MAPPINGS_FOLDER
+              value: "/usr/fume/mappings"
+            {{- end }}
             {{- range $key, $value := .Values.env }}
             {{- if $value }}
             - name: {{ $key }}
@@ -87,13 +91,19 @@ spec:
           volumeMounts:
             - name: logs
               mountPath: /usr/fume/logs
-            - name: snapshots
-              mountPath: /usr/fume/snapshots
             - name: templates
               mountPath: /usr/fume/templates
             # Writable cache directory for FHIR packages (non-root friendly fixed path)
             - name: fhir-cache
               mountPath: /usr/fume/fhir-packages
+            {{- /* Mount /usr/fume/mappings when chart storage is enabled OR when user explicitly sets MAPPINGS_FOLDER to the default path */ -}}
+            {{- $mappingsFolder := "/usr/fume/mappings" }}
+            {{- $hasMappingsEnv := hasKey $env "MAPPINGS_FOLDER" }}
+            {{- $useMappingsMount := or .Values.storage.mappings.enabled (and $hasMappingsEnv (eq (index $env "MAPPINGS_FOLDER") $mappingsFolder)) }}
+            {{- if $useMappingsMount }}
+            - name: mappings
+              mountPath: /usr/fume/mappings
+            {{- end }}
             # Mount license as a single file
             - name: license
               mountPath: /usr/fume/license.key.lic
@@ -111,26 +121,33 @@ spec:
       volumes:
         - name: logs
           emptyDir: {}
-        # When snapshots/templates persistence enabled their PVCs come from volumeClaimTemplates.
-        # Provide emptyDir only when disabled so mounts still exist.
-        {{- if not .Values.storage.snapshots.enabled }}
-        - name: snapshots
-          emptyDir: {}
-        {{- end }}
-        {{- if not .Values.storage.templates.enabled }}
+        # templates: shared PVC (recommended) or emptyDir
+        {{- if .Values.storage.templates.enabled }}
+        - name: templates
+          persistentVolumeClaim:
+            claimName: {{ .Values.storage.templates.existingClaim | default (printf "%s-templates" (include "fume.fullname" .)) }}
+        {{- else }}
         - name: templates
           emptyDir: {}
         {{- end }}
-        # fhir-cache: persistent via claim template when enabled & no existingClaim; emptyDir otherwise or when existingClaim specified we mount that claim explicitly.
+        # fhir-cache: shared PVC or emptyDir
         {{- if .Values.storage.fhirCache.enabled }}
-        {{- if .Values.storage.fhirCache.existingClaim }}
         - name: fhir-cache
           persistentVolumeClaim:
-            claimName: {{ .Values.storage.fhirCache.existingClaim }}
-        {{- end }}
+            claimName: {{ .Values.storage.fhirCache.existingClaim | default (printf "%s-fhir-cache" (include "fume.fullname" .)) }}
         {{- else }}
         - name: fhir-cache
           emptyDir: {}
+        {{- end }}
+        # mappings: optional; only mounted when enabled or when env explicitly sets MAPPINGS_FOLDER=/usr/fume/mappings
+        {{- if $useMappingsMount }}
+        - name: mappings
+          {{- if .Values.storage.mappings.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.storage.mappings.existingClaim | default (printf "%s-mappings" (include "fume.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
         {{- end }}
         - name: license
           secret:
@@ -167,28 +184,3 @@ spec:
           volumeMounts:
             - name: fhir-index
               mountPath: /index
-  {{- $claimTemplates := list }}
-  {{- if .Values.storage.snapshots.enabled }}
-  {{- $claimTemplates = append $claimTemplates (dict "name" "snapshots" "accessMode" .Values.storage.snapshots.accessMode "storageClass" .Values.storage.snapshots.storageClass "size" .Values.storage.snapshots.size) }}
-  {{- end }}
-  {{- if .Values.storage.templates.enabled }}
-  {{- $claimTemplates = append $claimTemplates (dict "name" "templates" "accessMode" .Values.storage.templates.accessMode "storageClass" .Values.storage.templates.storageClass "size" .Values.storage.templates.size) }}
-  {{- end }}
-  {{- if and .Values.storage.fhirCache.enabled (not .Values.storage.fhirCache.existingClaim) }}
-  {{- $claimTemplates = append $claimTemplates (dict "name" "fhir-cache" "accessMode" .Values.storage.fhirCache.accessMode "storageClass" .Values.storage.fhirCache.storageClass "size" .Values.storage.fhirCache.size) }}
-  {{- end }}
-  {{- if gt (len $claimTemplates) 0 }}
-  volumeClaimTemplates:
-  {{- range $ct := $claimTemplates }}
-    - metadata:
-        name: {{ $ct.name }}
-        labels:
-          {{- include "fume.labels" $ | nindent 10 }}
-      spec:
-        accessModes: [ "{{ $ct.accessMode }}" ]
-        storageClassName: {{ $ct.storageClass | quote }}
-        resources:
-          requests:
-            storage: {{ $ct.size }}
-  {{- end }}
-  {{- end }}

@@ -69,11 +69,8 @@ jobs:
       - name: Create application secrets (fume-secrets)
         run: |
           # Secret required by chart; validation ensures .Values.secrets.fume exists.
-          # Provide dummy FHIR server values since SERVER_STATELESS=true in CI.
           kubectl -n fume create secret generic fume-secrets \
-            --from-literal=FHIR_SERVER_BASE="https://dummy.fhir.server/fhir" \
-            --from-literal=FHIR_SERVER_UN="dummy-user" \
-            --from-literal=FHIR_SERVER_PW="dummy-pass" || true
+            --from-literal=FHIR_SERVER_BASE="n/a" || true
       - name: Create DockerHub pull secret
         run: |
           kubectl -n fume create secret docker-registry regcred \
@@ -103,8 +100,8 @@ jobs:
         run: |
           set -euo pipefail
           # Run containers as non-root to reproduce startup failure (no chart change needed)
-          COMMON_OVERRIDES="--set image.pullSecret=regcred --set-string env.SERVER_STATELESS=true --set storage.fhirCache.enabled=true --set configMap.FHIR_PACKAGES=hl7.fhir.r4.core@4.0.1 \
-            --set storage.snapshots.storageClass=$STORAGE_CLASS --set storage.templates.storageClass=$STORAGE_CLASS --set storage.fhirCache.storageClass=$STORAGE_CLASS \
+          COMMON_OVERRIDES="--set image.pullSecret=regcred --set storage.fhirCache.enabled=true --set configMap.FHIR_PACKAGES=hl7.fhir.r4.core@4.0.1 \
+            --set storage.templates.storageClass=$STORAGE_CLASS --set storage.fhirCache.storageClass=$STORAGE_CLASS \
             --set podSecurityContext.runAsUser=65534 --set podSecurityContext.runAsGroup=65534 \
             --set securityContext.runAsNonRoot=true"
           if [ "${{ matrix.scenario }}" = "default" ]; then
@@ -115,6 +112,10 @@ jobs:
           else
             helm install fume ./helm/fume -n fume -f ./helm/fume/values.prod.yaml \
               $COMMON_OVERRIDES \
+              --set backend.replicaCount=1 \
+              --set autoscaling.backend.enabled=false \
+              --set storage.templates.accessMode=ReadWriteOnce \
+              --set storage.fhirCache.accessMode=ReadWriteOnce \
               --set configMap.CANONICAL_BASE_URL="https://fume.prod.example.com" \
               --set configMap.FUME_SERVER_URL="https://api.prod.example.com";
           fi
@@ -127,7 +128,7 @@ jobs:
           kubectl -n fume get events --sort-by=.metadata.creationTimestamp | tail -n 40 || true
       - name: Wait for backend rollout
         run: |
-          kubectl -n fume rollout status statefulset/fume-backend --timeout=600s
+          kubectl -n fume rollout status deployment/fume-backend --timeout=600s
       - name: Create curl prober pod
         run: |
           # Lightweight pod with curl for application probing; reused for version polling.
@@ -202,11 +203,12 @@ jobs:
       - name: Check fhirCache folder population
         run: |
           set -euo pipefail
+          POD=$(kubectl -n fume get pods -l app.kubernetes.io/component=backend -o jsonpath='{.items[0].metadata.name}')
           TARGET_DIR='hl7.fhir.r4.core#4.0.1'
           for i in $(seq 1 20); do
-            if kubectl -n fume exec fume-backend-0 -- sh -c "ls -1 /usr/fume/fhir-packages | grep -F '$TARGET_DIR'" >/dev/null 2>&1; then
+            if kubectl -n fume exec "$POD" -- sh -c "ls -1 /usr/fume/fhir-packages | grep -F '$TARGET_DIR'" >/dev/null 2>&1; then
               echo "Found expected FHIR package directory: $TARGET_DIR";
-              kubectl -n fume exec fume-backend-0 -- sh -c "ls -1 /usr/fume/fhir-packages" > /tmp/fhir-cache-list.txt
+              kubectl -n fume exec "$POD" -- sh -c "ls -1 /usr/fume/fhir-packages" > /tmp/fhir-cache-list.txt
               exit 0;
             fi
             [ $i -eq 20 ] && echo "::error::Did not find $TARGET_DIR in fhir-cache" && exit 1
@@ -217,10 +219,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/diagnostics
-          kubectl -n fume describe statefulset fume-backend > /tmp/diagnostics/statefulset.txt || true
-          kubectl -n fume describe pod fume-backend-0 > /tmp/diagnostics/pod.txt || true
-          kubectl -n fume logs statefulset/fume-backend --tail=400 > /tmp/diagnostics/pod-logs.txt || true
-          kubectl -n fume exec fume-backend-0 -- sh -c 'for f in /usr/fume/logs/*.log; do echo "==== $f (tail 200) ===="; tail -n 200 "$f"; done' > /tmp/diagnostics/app-logs.txt || true
+          POD=$(kubectl -n fume get pods -l app.kubernetes.io/component=backend -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo '')
+          kubectl -n fume describe deployment fume-backend > /tmp/diagnostics/deployment.txt || true
+          if [ -n "$POD" ]; then
+            kubectl -n fume describe pod "$POD" > /tmp/diagnostics/pod.txt || true
+            kubectl -n fume exec "$POD" -- sh -c 'for f in /usr/fume/logs/*.log; do echo "==== $f (tail 200) ===="; tail -n 200 "$f"; done' > /tmp/diagnostics/app-logs.txt || true
+          fi
+          kubectl -n fume logs deployment/fume-backend --tail=400 > /tmp/diagnostics/pod-logs.txt || true
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
