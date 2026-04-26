@@ -17,6 +17,9 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if .Values.fhirConnections.enabled }}
+        checksum/fhir-connections: {{ include (print $.Template.BasePath "/connections-secret.yaml") . | sha256sum }}
+        {{- end }}
       labels:
         {{- include "fume.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: backend
@@ -67,8 +70,12 @@ spec:
             - name: MAPPINGS_FOLDER
               value: "/usr/fume/mappings"
             {{- end }}
+            {{- if .Values.fhirConnections.enabled }}
+            - name: FHIR_CONNECTIONS_FILE
+              value: {{ .Values.fhirConnections.mountPath | quote }}
+            {{- end }}
             {{- range $key, $value := .Values.env }}
-            {{- if $value }}
+            {{- if and $value (or (ne $key "FHIR_CONNECTIONS_FILE") (not $.Values.fhirConnections.enabled)) }}
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
@@ -113,6 +120,12 @@ spec:
             - name: fhir-index
               mountPath: /usr/fume/fhirPackageIndex.json
               subPath: fhirPackageIndex.json
+            {{- if .Values.fhirConnections.enabled }}
+            - name: fhir-connections
+              mountPath: {{ .Values.fhirConnections.mountPath }}
+              subPath: connections.yml
+              readOnly: true
+            {{- end }}
             {{- if .Values.tls.customCA.enabled }}
             - name: custom-ca
               mountPath: {{ .Values.tls.customCA.mountPath }}
@@ -157,6 +170,14 @@ spec:
                 path: license.key.lic
         - name: fhir-index
           emptyDir: {}
+        {{- if .Values.fhirConnections.enabled }}
+        - name: fhir-connections
+          secret:
+            secretName: {{ include "fume.fullname" . }}-fhir-connections
+            items:
+              - key: connections.yml
+                path: connections.yml
+        {{- end }}
         {{- if .Values.tls.customCA.enabled }}
         - name: custom-ca
           secret:

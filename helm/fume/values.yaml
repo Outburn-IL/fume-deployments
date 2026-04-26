@@ -136,6 +136,13 @@ secrets:
   # Optional secret key you may add to the fume-secrets Secret:
   # FHIR_PACKAGE_REGISTRY_TOKEN: <token> (used only when configMap.FHIR_PACKAGE_REGISTRY_URL is set)
 
+# Optional Secret-backed named FHIR connections file.
+# Provide the raw YAML document, including the top-level `fhir:` key, via a values file.
+fhirConnections:
+  enabled: false
+  mountPath: /usr/fume/connections.yml
+  yaml: ""
+
 # Environment variables
 env:
   # Backend (FUME Engine) variables

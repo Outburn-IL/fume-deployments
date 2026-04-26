@@ -10,6 +10,7 @@ This Helm chart deploys the FUME application stack on Kubernetes, including:
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
 - [Secrets and License Setup](#secrets-and-license-setup)
+- [Named FHIR Connections](#named-fhir-connections)
 - [Storage Configuration](#storage-configuration)
 - [Environment-Specific Deployments](#environment-specific-deployments)
 - [Upgrading](#upgrading)
@@ -253,6 +254,52 @@ secrets:
 image:
   pullSecret: "my-custom-dockerhub-secret"
 ```
+
+## Named FHIR Connections
+
+The chart can render a Secret-backed `connections.yml` and mount it into the backend automatically. When enabled, it also sets `FHIR_CONNECTIONS_FILE` to the mounted file path, so you do not need to add that environment variable yourself.
+
+Use a values file for the YAML payload instead of `--set`, because multiline connection configuration is awkward to manage on the command line.
+
+Example values file:
+
+```yaml
+fhirConnections:
+  enabled: true
+  mountPath: /usr/fume/connections.yml
+  yaml: |
+    fhir:
+      sandboxA:
+        baseUrl: https://sandbox-a.example.com/fhir
+        authType: BASIC
+        username: ${FHIR_SANDBOX_A_USERNAME}
+        password: ${FHIR_SANDBOX_A_PASSWORD}
+      sandboxB:
+        baseUrl: https://sandbox-b.example.com/fhir
+        authType: BASIC
+        username: ${FHIR_SANDBOX_B_USERNAME}
+        password: ${FHIR_SANDBOX_B_PASSWORD}
+
+env:
+  FHIR_CONNECTIONS_URL_POOL_SIZE: "50"
+```
+
+Deploy with the extra values file:
+
+```bash
+helm install fume ./helm/fume \
+  --namespace fume \
+  -f ./helm/fume/values.named-connections.yaml \
+  --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
+  --set configMap.FUME_SERVER_URL="https://your-fume-api.com" \
+  --set configMap.FHIR_PACKAGES="<org-specific-packages>"
+```
+
+Notes:
+- The chart stores this file in a Kubernetes Secret, not a ConfigMap, because connection files often contain credentials or secret placeholders.
+- You can keep sensitive values out of the authored YAML by using `${ENV_VAR}` placeholders and supplying those variables through your existing Secret management flow.
+- `env.FHIR_CONNECTIONS_URL_POOL_SIZE` remains the way to tune named-connection URL pooling.
+- If `fhirConnections.enabled=true`, do not set `env.FHIR_CONNECTIONS_FILE` to a different path; the chart will fail fast on that conflict.
 
 ## Storage Configuration
 
