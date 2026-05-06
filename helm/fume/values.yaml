@@ -13,10 +13,10 @@ enableFrontend: true
 image:
   backend:
     repository: outburnltd/fume-enterprise-server
-    tag: "3.0.3"
+    tag: "3.1.0"
   frontend:
     repository: outburnltd/fume-designer
-    tag: "3.0.0"
+    tag: "3.1.0"
   pullPolicy: IfNotPresent
   pullSecret: ""  # Optional: set to a Secret name only if namespace/service account doesn't already provide pull access
 
