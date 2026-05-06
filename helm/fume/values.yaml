@@ -13,10 +13,10 @@ enableFrontend: true
 image:
   backend:
     repository: outburnltd/fume-enterprise-server
-    tag: "3.0.0"
+    tag: "3.1.0"
   frontend:
     repository: outburnltd/fume-designer
-    tag: "3.0.0"
+    tag: "3.1.0"
   pullPolicy: IfNotPresent
   pullSecret: ""  # Optional: set to a Secret name only if namespace/service account doesn't already provide pull access
 
@@ -136,6 +136,22 @@ secrets:
   # Optional secret key you may add to the fume-secrets Secret:
   # FHIR_PACKAGE_REGISTRY_TOKEN: <token> (used only when configMap.FHIR_PACKAGE_REGISTRY_URL is set)
 
+# Optional Secret-backed named FHIR connections file.
+# Provide the raw YAML document, including the top-level `fhir:` key, via a values file.
+fhirConnections:
+  enabled: false
+  mountPath: /usr/fume/connections.yml
+  yaml: ""
+
+# Optional Secret-backed auth configuration file.
+# Provide the raw auth.yaml content (with top-level `version: 1`, `keycloak:`, `policy:`, ...) via a values file.
+# When enabled, the backend mounts this file and the chart sets AUTH_CONFIG_PATH to the mounted path.
+# It also enables auth on the designer by setting FUME_DESIGNER_AUTH_ENABLED=true (override via env if needed).
+auth:
+  enabled: false
+  mountPath: /usr/fume/auth.yaml
+  yaml: ""
+
 # Environment variables
 env:
   # Backend (FUME Engine) variables
@@ -145,6 +161,9 @@ env:
   
   # Frontend (FUME Designer) variables
   FUME_DESIGNER_HEADLINE: "FUME Designer"
+  # When auth.enabled=true, the chart auto-sets FUME_DESIGNER_AUTH_ENABLED=true on the designer.
+  # Uncomment to override that default (e.g. to keep the designer in public mode while the backend enforces auth).
+  # FUME_DESIGNER_AUTH_ENABLED: "false"
 
 # ConfigMap data (non-secret values)
 # Note: Required values must be provided during installation

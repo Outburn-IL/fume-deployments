@@ -70,6 +70,7 @@ Validate required configuration values
 	 Use local variable with default empty dict, then validate presence & non-empty value.
 */ -}}
 {{- $cfg := .Values.configMap | default dict -}}
+{{- $env := .Values.env | default dict -}}
 {{- if or (not (hasKey $cfg "CANONICAL_BASE_URL")) (eq (index $cfg "CANONICAL_BASE_URL") "") }}
 	{{- fail "CANONICAL_BASE_URL is required. Set via --set configMap.CANONICAL_BASE_URL=\"https://fume.your-company.com\"" }}
 {{- end }}
@@ -86,6 +87,28 @@ Validate required configuration values
 {{- end }}
 {{- if or (not .Values.secrets) (not .Values.secrets.license) }}
 	{{- fail "License secret name (.Values.secrets.license) is required. Ensure secret 'fume-license' exists or update values." }}
+{{- end }}
+{{- if .Values.fhirConnections.enabled }}
+{{- if eq (.Values.fhirConnections.mountPath | default "") "" }}
+	{{- fail "fhirConnections.mountPath is required when fhirConnections.enabled=true." }}
+{{- end }}
+{{- if eq (.Values.fhirConnections.yaml | default "") "" }}
+	{{- fail "fhirConnections.yaml is required when fhirConnections.enabled=true. Provide the raw connections.yml content with a top-level 'fhir:' key via a values file." }}
+{{- end }}
+{{- if and (hasKey $env "FHIR_CONNECTIONS_FILE") (ne (index $env "FHIR_CONNECTIONS_FILE") "") (ne (index $env "FHIR_CONNECTIONS_FILE") .Values.fhirConnections.mountPath) }}
+	{{- fail "env.FHIR_CONNECTIONS_FILE conflicts with fhirConnections.mountPath. Remove the env override or set it to the same path." }}
+{{- end }}
+{{- end }}
+{{- if .Values.auth.enabled }}
+{{- if eq (.Values.auth.mountPath | default "") "" }}
+	{{- fail "auth.mountPath is required when auth.enabled=true." }}
+{{- end }}
+{{- if eq (.Values.auth.yaml | default "") "" }}
+	{{- fail "auth.yaml is required when auth.enabled=true. Provide the raw auth.yaml content (with top-level 'version: 1', 'keycloak:', 'policy:', ...) via a values file." }}
+{{- end }}
+{{- if and (hasKey $env "AUTH_CONFIG_PATH") (ne (index $env "AUTH_CONFIG_PATH") "") (ne (index $env "AUTH_CONFIG_PATH") .Values.auth.mountPath) }}
+	{{- fail "env.AUTH_CONFIG_PATH conflicts with auth.mountPath. Remove the env override or set it to the same path." }}
+{{- end }}
 {{- end }}
 {{- end }}
 

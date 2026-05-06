@@ -10,6 +10,8 @@ This Helm chart deploys the FUME application stack on Kubernetes, including:
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
 - [Secrets and License Setup](#secrets-and-license-setup)
+- [Named FHIR Connections](#named-fhir-connections)
+- [Auth Configuration](#auth-configuration)
 - [Storage Configuration](#storage-configuration)
 - [Environment-Specific Deployments](#environment-specific-deployments)
 - [Upgrading](#upgrading)
@@ -253,6 +255,121 @@ secrets:
 image:
   pullSecret: "my-custom-dockerhub-secret"
 ```
+
+## Named FHIR Connections
+
+The chart can render a Secret-backed `connections.yml` and mount it into the backend automatically. When enabled, it also sets `FHIR_CONNECTIONS_FILE` to the mounted file path, so you do not need to add that environment variable yourself.
+
+Use a values file for the YAML payload instead of `--set`, because multiline connection configuration is awkward to manage on the command line.
+
+Example values file:
+
+```yaml
+fhirConnections:
+  enabled: true
+  mountPath: /usr/fume/connections.yml
+  yaml: |
+    fhir:
+      sandboxA:
+        baseUrl: https://sandbox-a.example.com/fhir
+        authType: BASIC
+        username: ${FHIR_SANDBOX_A_USERNAME}
+        password: ${FHIR_SANDBOX_A_PASSWORD}
+      sandboxB:
+        baseUrl: https://sandbox-b.example.com/fhir
+        authType: BASIC
+        username: ${FHIR_SANDBOX_B_USERNAME}
+        password: ${FHIR_SANDBOX_B_PASSWORD}
+
+env:
+  FHIR_CONNECTIONS_URL_POOL_SIZE: "50"
+```
+
+Deploy with the extra values file:
+
+```bash
+helm install fume ./helm/fume \
+  --namespace fume \
+  -f ./helm/fume/values.named-connections.yaml \
+  --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
+  --set configMap.FUME_SERVER_URL="https://your-fume-api.com" \
+  --set configMap.FHIR_PACKAGES="<org-specific-packages>"
+```
+
+Notes:
+- The chart stores this file in a Kubernetes Secret, not a ConfigMap, because connection files often contain credentials or secret placeholders.
+- You can keep sensitive values out of the authored YAML by using `${ENV_VAR}` placeholders and supplying those variables through your existing Secret management flow.
+- `env.FHIR_CONNECTIONS_URL_POOL_SIZE` remains the way to tune named-connection URL pooling.
+- If `fhirConnections.enabled=true`, do not set `env.FHIR_CONNECTIONS_FILE` to a different path; the chart will fail fast on that conflict.
+
+## Auth Configuration
+
+The chart can render a Secret-backed `auth.yaml` and mount it into the backend automatically. When enabled, it also sets `AUTH_CONFIG_PATH` to the mounted file path on the backend, and turns on the designer's auth mode by setting `FUME_DESIGNER_AUTH_ENABLED=true` (unless you explicitly set it under `env`).
+
+See the auth schema reference in the FUME backend repo (`src/auth/README.md`) for the full set of options. Use a values file for the YAML payload — multiline policy content is awkward via `--set`.
+
+Example values file (PKCE mode):
+
+```yaml
+auth:
+  enabled: true
+  mountPath: /usr/fume/auth.yaml
+  yaml: |
+    version: 1
+    keycloak:
+      issuer: https://kc.example.com/realms/fume
+    designerClient:
+      clientId: fume
+    resource:
+      url: https://api.example.com
+      name: FUME
+    policy:
+      defaultRule: { access: authenticated }
+      routes:
+        - path: /
+          methods:
+            GET: { access: public }
+```
+
+Example values file (token-mediator / BFF mode, with secret interpolation):
+
+```yaml
+auth:
+  enabled: true
+  yaml: |
+    version: 1
+    keycloak:
+      issuer: https://kc.example.com/realms/fume
+      client:
+        id: fume
+        secret: ${KC_CLIENT_SECRET}
+    tokenMediator:
+      enabled: true
+      corsAllowedOrigins:
+        - https://designer.example.com
+    resource:
+      url: https://api.example.com
+      name: FUME
+    policy:
+      defaultRule: { access: authenticated }
+```
+
+Deploy with the extra values file:
+
+```bash
+helm install fume ./helm/fume \
+  --namespace fume \
+  -f ./helm/fume/values.auth.yaml \
+  --set configMap.CANONICAL_BASE_URL="https://fume.your-company.com" \
+  --set configMap.FUME_SERVER_URL="https://your-fume-api.com" \
+  --set configMap.FHIR_PACKAGES="<org-specific-packages>"
+```
+
+Notes:
+- The `auth.yaml` content is stored in a Kubernetes Secret, since it commonly carries client secrets and other sensitive references.
+- Use `${ENV_VAR}` placeholders inside `auth.yaml` for any sensitive values and supply those variables through your existing Secret management flow (e.g. add `KC_CLIENT_SECRET` to the `fume-secrets` Secret).
+- If `auth.enabled=true`, do not set `env.AUTH_CONFIG_PATH` to a different path; the chart will fail fast on that conflict.
+- The designer's auth toggle is auto-coupled: when `auth.enabled=true`, `FUME_DESIGNER_AUTH_ENABLED=true` is injected automatically. To override, set `env.FUME_DESIGNER_AUTH_ENABLED` explicitly.
 
 ## Storage Configuration
 
