@@ -99,6 +99,17 @@ Validate required configuration values
 	{{- fail "env.FHIR_CONNECTIONS_FILE conflicts with fhirConnections.mountPath. Remove the env override or set it to the same path." }}
 {{- end }}
 {{- end }}
+{{- if .Values.auth.enabled }}
+{{- if eq (.Values.auth.mountPath | default "") "" }}
+	{{- fail "auth.mountPath is required when auth.enabled=true." }}
+{{- end }}
+{{- if eq (.Values.auth.yaml | default "") "" }}
+	{{- fail "auth.yaml is required when auth.enabled=true. Provide the raw auth.yaml content (with top-level 'version: 1', 'keycloak:', 'policy:', ...) via a values file." }}
+{{- end }}
+{{- if and (hasKey $env "AUTH_CONFIG_PATH") (ne (index $env "AUTH_CONFIG_PATH") "") (ne (index $env "AUTH_CONFIG_PATH") .Values.auth.mountPath) }}
+	{{- fail "env.AUTH_CONFIG_PATH conflicts with auth.mountPath. Remove the env override or set it to the same path." }}
+{{- end }}
+{{- end }}
 {{- end }}
 
 {{/*

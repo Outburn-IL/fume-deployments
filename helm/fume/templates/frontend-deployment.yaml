@@ -66,6 +66,11 @@ spec:
             failureThreshold: {{ .Values.probes.frontend.readiness.failureThreshold }}
           {{- end }}
           env:
+            {{- $env := .Values.env | default dict }}
+            {{- if and .Values.auth.enabled (not (hasKey $env "FUME_DESIGNER_AUTH_ENABLED")) }}
+            - name: FUME_DESIGNER_AUTH_ENABLED
+              value: "true"
+            {{- end }}
             {{- range $key, $value := .Values.env }}
             {{- if $value }}
             - name: {{ $key }}
