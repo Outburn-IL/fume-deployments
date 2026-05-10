@@ -24,7 +24,8 @@ jobs:
       FHIR_SERVER_BASE: http://hapi-fhir.outburn.co.il/fhir
       FHIR_PACKAGE: il.hdp.fhir.r4@0.4.5
       EXPECTED_REPLICAS: ${{ github.event.inputs.replicas }}
-      WARMUP_TIMEOUT_SECONDS: "2700"
+      COLD_START_TIMEOUT_SECONDS: "300"
+      WARMUP_TIMEOUT_SECONDS: "900"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -112,17 +113,18 @@ jobs:
       - name: Wait for backend pods to appear
         run: |
           set -euo pipefail
+          OBSERVED=0
           for i in $(seq 1 60); do
             COUNT=$(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=backend --no-headers 2>/dev/null | wc -l | tr -d ' ')
+            OBSERVED="$COUNT"
             if [ "$COUNT" = "$EXPECTED_REPLICAS" ]; then
               kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=backend -o wide
               exit 0
             fi
             sleep 5
           done
-          echo "::error::Did not observe $EXPECTED_REPLICAS backend pods"
+          echo "::warning::Observed $OBSERVED backend pods after initial wait, expected $EXPECTED_REPLICAS. Continuing so warmed replicas can still be tested."
           kubectl -n "$NAMESPACE" get pods -o wide || true
-          exit 1
 
       - name: Wait for pods to settle
         run: |
@@ -145,36 +147,94 @@ jobs:
       - name: Copy request payload into prober pod
         run: kubectl -n "$NAMESPACE" cp /tmp/fume-request.json curl-prober:/tmp/fume-request.json
 
-      - name: Wait for backend warmup completion
+      - name: Wait for backend warmup and test ready pods
         run: |
           set -euo pipefail
           mkdir -p /tmp/health-checks
+          mkdir -p /tmp/repro-results
           mapfile -t PODS < <(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=backend -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
-          if [ "${#PODS[@]}" -ne "$EXPECTED_REPLICAS" ]; then
-            echo "::error::Expected $EXPECTED_REPLICAS pods but got ${#PODS[@]} before warmup waiting"
-            kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=backend -o wide || true
-            exit 1
+          OBSERVED_PODS=${#PODS[@]}
+          MISSING_PODS=$((EXPECTED_REPLICAS - OBSERVED_PODS))
+          if [ "$MISSING_PODS" -lt 0 ]; then
+            MISSING_PODS=0
+          fi
+          if [ "$OBSERVED_PODS" -eq 0 ]; then
+            {
+              echo "expected_replicas=$EXPECTED_REPLICAS"
+              echo "observed_pods=0"
+              echo "missing_pods=$EXPECTED_REPLICAS"
+              echo "warmed_and_tested=0"
+              echo "pod_failures=0"
+            } > /tmp/repro-results/summary.txt
+            echo "::warning::No backend pods available for warmup polling or expression testing."
+            exit 0
+          fi
+          if [ "$OBSERVED_PODS" -ne "$EXPECTED_REPLICAS" ]; then
+            echo "::warning::Expected $EXPECTED_REPLICAS backend pods but observed $OBSERVED_PODS. Continuing with observed pods and reporting the mismatch."
           fi
 
           declare -A READY=()
+          declare -A COLD_READY=()
+          declare -A DONE=()
+          declare -A OUTCOME=()
           STARTED_AT=$(date +%s)
+          for POD in "${PODS[@]}"; do
+            READY[$POD]=0
+            COLD_READY[$POD]=0
+            DONE[$POD]=0
+          done
 
           while true; do
-            READY_COUNT=0
+            ALL_DONE=1
+            NOW=$(date +%s)
             for POD in "${PODS[@]}"; do
-              if [ "${READY[$POD]:-0}" = "1" ]; then
-                READY_COUNT=$((READY_COUNT + 1))
+              if [ "${DONE[$POD]:-0}" = "1" ]; then
                 continue
               fi
+              ALL_DONE=0
 
               POD_IP=$(kubectl -n "$NAMESPACE" get pod "$POD" -o jsonpath='{.status.podIP}' 2>/dev/null || true)
               PHASE=$(kubectl -n "$NAMESPACE" get pod "$POD" -o jsonpath='{.status.phase}' 2>/dev/null || echo Unknown)
-              RAW=$(kubectl -n "$NAMESPACE" exec curl-prober -- sh -c "curl -sS -m 30 --connect-timeout 5 -w 'HTTPSTATUS:%{http_code}' http://$POD_IP:42420/health" 2>/dev/null || true)
-              BODY="${RAW%HTTPSTATUS:*}"
-              STATUS="${RAW##*HTTPSTATUS:}"
+              if [ -n "$POD_IP" ]; then
+                RAW=$(kubectl -n "$NAMESPACE" exec curl-prober -- sh -c "curl -sS -m 30 --connect-timeout 5 -w 'HTTPSTATUS:%{http_code}' http://$POD_IP:42420/health" 2>/dev/null || true)
+                BODY="${RAW%HTTPSTATUS:*}"
+                STATUS="${RAW##*HTTPSTATUS:}"
+              else
+                BODY=""
+                STATUS="000"
+              fi
 
               printf '%s' "$BODY" > "/tmp/health-checks/${POD}.health.json"
               printf '%s\n' "$STATUS" > "/tmp/health-checks/${POD}.health.status.txt"
+              printf '%s\n' "$PHASE" > "/tmp/health-checks/${POD}.phase.txt"
+
+              if [ "$STATUS" = "200" ] && echo "$BODY" | jq -e '.status == "UP"' >/dev/null 2>&1; then
+                COLD_READY[$POD]=1
+              fi
+
+              ELAPSED=$((NOW - STARTED_AT))
+
+              if [ "${COLD_READY[$POD]:-0}" != "1" ]; then
+                if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then
+                  OUTCOME[$POD]="phase-${PHASE}-before-cold-ready"
+                  kubectl -n "$NAMESPACE" logs "$POD" --tail=400 > "/tmp/repro-results/${POD}.log.txt" || true
+                  kubectl -n "$NAMESPACE" describe pod "$POD" > "/tmp/repro-results/${POD}.describe.txt" || true
+                  DONE[$POD]=1
+                  continue
+                fi
+
+                if [ "$ELAPSED" -ge "$COLD_START_TIMEOUT_SECONDS" ]; then
+                  OUTCOME[$POD]="cold-start-timeout-phase-${PHASE}"
+                  kubectl -n "$NAMESPACE" logs "$POD" --tail=400 > "/tmp/repro-results/${POD}.log.txt" || true
+                  kubectl -n "$NAMESPACE" describe pod "$POD" > "/tmp/repro-results/${POD}.describe.txt" || true
+                  kubectl -n "$NAMESPACE" delete pod "$POD" --wait=false || true
+                  DONE[$POD]=1
+                  continue
+                fi
+
+                echo "$POD cold start not ready yet: phase=$PHASE status=$STATUS"
+                continue
+              fi
 
               if [ "$STATUS" = "200" ] && echo "$BODY" | jq -e '
                 .status == "UP" and
@@ -184,56 +244,85 @@ jobs:
                 (.warming_up_finished_at | type == "string")
               ' >/dev/null 2>&1; then
                 READY[$POD]=1
-                READY_COUNT=$((READY_COUNT + 1))
-                echo "$POD warmup complete"
-              else
-                echo "$POD not ready yet: phase=$PHASE status=$STATUS"
+                echo "$POD warmup complete; running expression test"
+                RAW_POST=$(kubectl -n "$NAMESPACE" exec curl-prober -- sh -c "curl -sS -m 30 --connect-timeout 5 -H 'Content-Type: application/json' --data-binary @/tmp/fume-request.json -w 'HTTPSTATUS:%{http_code}' http://$POD_IP:42420/" 2>/dev/null || true)
+                BODY_POST="${RAW_POST%HTTPSTATUS:*}"
+                STATUS_POST="${RAW_POST##*HTTPSTATUS:}"
+                printf '%s' "$BODY_POST" > "/tmp/repro-results/${POD}.body.json"
+                printf '%s\n' "$STATUS_POST" > "/tmp/repro-results/${POD}.status.txt"
+                kubectl -n "$NAMESPACE" logs "$POD" --tail=400 > "/tmp/repro-results/${POD}.log.txt" || true
+                kubectl -n "$NAMESPACE" describe pod "$POD" > "/tmp/repro-results/${POD}.describe.txt" || true
+                if [ "$STATUS_POST" = "200" ]; then
+                  OUTCOME[$POD]="warmed-and-tested-200"
+                else
+                  OUTCOME[$POD]="warmed-but-test-failed-${STATUS_POST}"
+                fi
+                DONE[$POD]=1
+                continue
               fi
+
+              if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then
+                OUTCOME[$POD]="phase-${PHASE}-before-warmup"
+                kubectl -n "$NAMESPACE" logs "$POD" --tail=400 > "/tmp/repro-results/${POD}.log.txt" || true
+                kubectl -n "$NAMESPACE" describe pod "$POD" > "/tmp/repro-results/${POD}.describe.txt" || true
+                DONE[$POD]=1
+                continue
+              fi
+
+              if [ "$ELAPSED" -ge "$WARMUP_TIMEOUT_SECONDS" ]; then
+                OUTCOME[$POD]="warmup-timeout-phase-${PHASE}"
+                kubectl -n "$NAMESPACE" logs "$POD" --tail=400 > "/tmp/repro-results/${POD}.log.txt" || true
+                kubectl -n "$NAMESPACE" describe pod "$POD" > "/tmp/repro-results/${POD}.describe.txt" || true
+                DONE[$POD]=1
+                continue
+              fi
+
+              echo "$POD not ready yet: phase=$PHASE status=$STATUS"
             done
 
-            if [ "$READY_COUNT" -eq "$EXPECTED_REPLICAS" ]; then
-              echo "All backend pods completed warmup"
+            if [ "$ALL_DONE" = "1" ]; then
+              echo "Finished processing all observed backend pods"
               break
-            fi
-
-            NOW=$(date +%s)
-            ELAPSED=$((NOW - STARTED_AT))
-            if [ "$ELAPSED" -ge "$WARMUP_TIMEOUT_SECONDS" ]; then
-              echo "::error::Timed out waiting for backend warmup completion after ${WARMUP_TIMEOUT_SECONDS}s"
-              kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=backend -o wide || true
-              exit 1
             fi
 
             sleep 10
           done
 
-      - name: Probe each backend pod root endpoint
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/repro-results
-          mapfile -t PODS < <(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=backend -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
-          if [ "${#PODS[@]}" -ne "$EXPECTED_REPLICAS" ]; then
-            echo "::error::Expected $EXPECTED_REPLICAS pods but got ${#PODS[@]}"
-            kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=backend -o wide || true
-            exit 1
-          fi
-          FAILURES=0
+          WARMED_AND_TESTED=0
+          POD_FAILURES=0
+          {
+            echo "expected_replicas=$EXPECTED_REPLICAS"
+            echo "observed_pods=$OBSERVED_PODS"
+            echo "missing_pods=$MISSING_PODS"
+          } > /tmp/repro-results/summary.txt
           for POD in "${PODS[@]}"; do
-            POD_IP=$(kubectl -n "$NAMESPACE" get pod "$POD" -o jsonpath='{.status.podIP}')
-            echo "Testing $POD at $POD_IP"
-            RAW=$(kubectl -n "$NAMESPACE" exec curl-prober -- sh -c "curl -sS -m 30 --connect-timeout 5 -H 'Content-Type: application/json' --data-binary @/tmp/fume-request.json -w 'HTTPSTATUS:%{http_code}' http://$POD_IP:42420/" 2>/dev/null || true)
-            BODY="${RAW%HTTPSTATUS:*}"
-            STATUS="${RAW##*HTTPSTATUS:}"
-            printf '%s' "$BODY" > "/tmp/repro-results/${POD}.body.json"
-            printf '%s\n' "$STATUS" > "/tmp/repro-results/${POD}.status.txt"
-            kubectl -n "$NAMESPACE" logs "$POD" --tail=400 > "/tmp/repro-results/${POD}.log.txt" || true
-            kubectl -n "$NAMESPACE" describe pod "$POD" > "/tmp/repro-results/${POD}.describe.txt" || true
-            if [ "$STATUS" != "200" ]; then
-              echo "::error::Expected 200 from $POD, got $STATUS"
-              FAILURES=$((FAILURES + 1))
+            POD_OUTCOME="${OUTCOME[$POD]:-unknown}"
+            printf '%s\n' "$POD_OUTCOME" > "/tmp/repro-results/${POD}.outcome.txt"
+            echo "$POD=$POD_OUTCOME" >> /tmp/repro-results/summary.txt
+            if [ "$POD_OUTCOME" = "warmed-and-tested-200" ]; then
+              WARMED_AND_TESTED=$((WARMED_AND_TESTED + 1))
+            else
+              POD_FAILURES=$((POD_FAILURES + 1))
             fi
           done
-          if [ "$FAILURES" -ne 0 ]; then
+          echo "warmed_and_tested=$WARMED_AND_TESTED" >> /tmp/repro-results/summary.txt
+          echo "pod_failures=$POD_FAILURES" >> /tmp/repro-results/summary.txt
+
+      - name: Evaluate reproduction outcomes
+        run: |
+          set -euo pipefail
+          SUMMARY=/tmp/repro-results/summary.txt
+          if [ ! -f "$SUMMARY" ]; then
+            echo "::error::Missing reproduction summary"
+            exit 1
+          fi
+          cat "$SUMMARY"
+          MISSING=$(sed -n 's/^missing_pods=//p' "$SUMMARY" | head -n1)
+          FAILURES=$(sed -n 's/^pod_failures=//p' "$SUMMARY" | head -n1)
+          if [ -z "$MISSING" ]; then MISSING=0; fi
+          if [ -z "$FAILURES" ]; then FAILURES=0; fi
+          if [ "$MISSING" -ne 0 ] || [ "$FAILURES" -ne 0 ]; then
+            echo "::error::Reproduction completed with missing or failed replicas"
             exit 1
           fi
 
@@ -253,11 +342,24 @@ jobs:
       - name: Capture namespace diagnostics
         if: failure()
         run: |
+          set -euo pipefail
           mkdir -p /tmp/namespace-diagnostics
           kubectl -n "$NAMESPACE" get pods -o wide > /tmp/namespace-diagnostics/pods.txt || true
-          kubectl -n "$NAMESPACE" get pvc > /tmp/namespace-diagnostics/pvc.txt || true
+          kubectl -n "$NAMESPACE" get pvc -o wide > /tmp/namespace-diagnostics/pvc.txt || true
           kubectl -n "$NAMESPACE" get events --sort-by=.metadata.creationTimestamp > /tmp/namespace-diagnostics/events.txt || true
           kubectl -n "$NAMESPACE" describe deployment "$RELEASE_NAME-backend" > /tmp/namespace-diagnostics/deployment.txt || true
+          kubectl -n "$NAMESPACE" get rs > /tmp/namespace-diagnostics/replicasets.txt || true
+          mapfile -t BACKEND_PODS < <(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=backend -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' || true)
+          for POD in "${BACKEND_PODS[@]}"; do
+            [ -n "$POD" ] || continue
+            kubectl -n "$NAMESPACE" describe pod "$POD" > "/tmp/namespace-diagnostics/${POD}.describe.txt" || true
+            kubectl -n "$NAMESPACE" logs "$POD" --tail=400 > "/tmp/namespace-diagnostics/${POD}.log.txt" || true
+          done
+          mapfile -t PVCS < <(kubectl -n "$NAMESPACE" get pvc -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' || true)
+          for PVC in "${PVCS[@]}"; do
+            [ -n "$PVC" ] || continue
+            kubectl -n "$NAMESPACE" describe pvc "$PVC" > "/tmp/namespace-diagnostics/${PVC}.describe.txt" || true
+          done
 
       - name: Upload artifacts
         if: always()
