@@ -1,0 +1,276 @@
+name: Shared Cache Concurrency Repro
+
+on:
+  workflow_dispatch:
+    inputs:
+      replicas:
+        description: Number of backend replicas to deploy and probe
+        required: true
+        default: '3'
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    name: Reproduce on KinD
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      FUME_LICENSE_B64: ${{ secrets.FUME_LICENSE_B64 }}
+      NAMESPACE: fume-repro
+      RELEASE_NAME: fume-repro
+      FHIR_SERVER_BASE: http://hapi-fhir.outburn.co.il/fhir
+      FHIR_PACKAGE: il.hdp.fhir.r4@0.4.5
+      EXPECTED_REPLICAS: ${{ github.event.inputs.replicas }}
+      WARMUP_TIMEOUT_SECONDS: "2700"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create KinD cluster
+        uses: helm/kind-action@v1.9.0
+        with:
+          version: v0.23.0
+          node_image: kindest/node:v1.29.4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.29.4
+
+      - name: Create namespace
+        run: kubectl create namespace "$NAMESPACE"
+
+      - name: Create application secret
+        run: |
+          kubectl -n "$NAMESPACE" create secret generic fume-secrets \
+            --from-literal=FHIR_SERVER_BASE="$FHIR_SERVER_BASE"
+
+      - name: Create Docker Hub pull secret
+        run: |
+          kubectl -n "$NAMESPACE" create secret docker-registry regcred \
+            --docker-username=outburnltd \
+            --docker-password="$DOCKERHUB_TOKEN" \
+            --docker-server="https://index.docker.io/v1/"
+
+      - name: Create license secret
+        run: |
+          printf "%s" "$FUME_LICENSE_B64" | base64 -d > license.key.lic
+          kubectl -n "$NAMESPACE" create secret generic fume-license --from-file=license.key.lic
+
+      - name: Detect storage class
+        run: |
+          set -euo pipefail
+          DEFAULT=$(kubectl get storageclass -o json | jq -r '.items[] | select(.metadata.annotations["storageclass.kubernetes.io/is-default-class"]=="true") | .metadata.name' | head -n1)
+          if [ -z "$DEFAULT" ]; then
+            for sc in standard local-path; do
+              if kubectl get storageclass "$sc" >/dev/null 2>&1; then
+                DEFAULT=$sc
+                break
+              fi
+            done
+          fi
+          if [ -z "$DEFAULT" ]; then
+            echo "::error::No usable storage class found"
+            exit 1
+          fi
+          echo "STORAGE_CLASS=$DEFAULT" >> "$GITHUB_ENV"
+
+      - name: Install chart for reproduction
+        run: |
+          set -euo pipefail
+          helm install "$RELEASE_NAME" ./helm/fume -n "$NAMESPACE" \
+            --set enableFrontend=false \
+            --set image.pullSecret=regcred \
+            --set backend.replicaCount="$EXPECTED_REPLICAS" \
+            --set autoscaling.backend.enabled=false \
+            --set backend.headlessService.enabled=false \
+            --set storage.templates.enabled=false \
+            --set storage.fhirCache.enabled=true \
+            --set storage.fhirCache.storageClass="$STORAGE_CLASS" \
+            --set storage.fhirCache.accessMode=ReadWriteOnce \
+            --set env.FHIR_SERVER_AUTH_TYPE=NONE \
+            --set env.PREBUILD_SNAPSHOTS=true \
+            --set env.FHIR_VERSION=4.0.1 \
+            --set configMap.CANONICAL_BASE_URL="https://repro.example.local" \
+            --set configMap.FUME_SERVER_URL="https://repro-api.example.local" \
+            --set configMap.FHIR_PACKAGES="$FHIR_PACKAGE"
+
+      - name: Show initial deployment diagnostics
+        run: |
+          kubectl -n "$NAMESPACE" get pvc || true
+          kubectl -n "$NAMESPACE" get pods -o wide || true
+          kubectl -n "$NAMESPACE" get events --sort-by=.metadata.creationTimestamp | tail -n 80 || true
+
+      - name: Wait for backend pods to appear
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            COUNT=$(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=backend --no-headers 2>/dev/null | wc -l | tr -d ' ')
+            if [ "$COUNT" = "$EXPECTED_REPLICAS" ]; then
+              kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=backend -o wide
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Did not observe $EXPECTED_REPLICAS backend pods"
+          kubectl -n "$NAMESPACE" get pods -o wide || true
+          exit 1
+
+      - name: Wait for pods to settle
+        run: |
+          sleep 30
+          kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=backend -o wide
+
+      - name: Create curl prober pod
+        run: |
+          kubectl -n "$NAMESPACE" run curl-prober --image=curlimages/curl:8.7.1 --restart=Never --command -- sleep 1800
+          kubectl -n "$NAMESPACE" wait --for=condition=Ready pod/curl-prober --timeout=180s
+
+      - name: Write request payload
+        run: |
+          cat > /tmp/fume-request.json <<'JSON'
+          {
+            "fume": "InstanceOf: http://hdp.fhir.health.gov.il/StructureDefinition/il-hdp-condition\n* identifier\n  * system = $urn\n  * value = 'urn:uuid:' & $uuid()\n* category[ilcore]\n  * coding.code = 'encounter-diagnosis'\n* code.text = 'aaa'\n* subject.reference = 'Patient/123'\n* recorder.reference = 'Practitioner/123'\n* recordedDate = $now()\n* note.text = 'bbb'"
+          }
+          JSON
+
+      - name: Copy request payload into prober pod
+        run: kubectl -n "$NAMESPACE" cp /tmp/fume-request.json curl-prober:/tmp/fume-request.json
+
+      - name: Wait for backend warmup completion
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/health-checks
+          mapfile -t PODS < <(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=backend -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
+          if [ "${#PODS[@]}" -ne "$EXPECTED_REPLICAS" ]; then
+            echo "::error::Expected $EXPECTED_REPLICAS pods but got ${#PODS[@]} before warmup waiting"
+            kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=backend -o wide || true
+            exit 1
+          fi
+
+          declare -A READY=()
+          STARTED_AT=$(date +%s)
+
+          while true; do
+            READY_COUNT=0
+            for POD in "${PODS[@]}"; do
+              if [ "${READY[$POD]:-0}" = "1" ]; then
+                READY_COUNT=$((READY_COUNT + 1))
+                continue
+              fi
+
+              POD_IP=$(kubectl -n "$NAMESPACE" get pod "$POD" -o jsonpath='{.status.podIP}' 2>/dev/null || true)
+              PHASE=$(kubectl -n "$NAMESPACE" get pod "$POD" -o jsonpath='{.status.phase}' 2>/dev/null || echo Unknown)
+              RAW=$(kubectl -n "$NAMESPACE" exec curl-prober -- sh -c "curl -sS -m 30 --connect-timeout 5 -w 'HTTPSTATUS:%{http_code}' http://$POD_IP:42420/health" 2>/dev/null || true)
+              BODY="${RAW%HTTPSTATUS:*}"
+              STATUS="${RAW##*HTTPSTATUS:}"
+
+              printf '%s' "$BODY" > "/tmp/health-checks/${POD}.health.json"
+              printf '%s\n' "$STATUS" > "/tmp/health-checks/${POD}.health.status.txt"
+
+              if [ "$STATUS" = "200" ] && echo "$BODY" | jq -e '
+                .status == "UP" and
+                .warming_up_enabled == true and
+                .warming_up == false and
+                (.warming_up_started_at | type == "string") and
+                (.warming_up_finished_at | type == "string")
+              ' >/dev/null 2>&1; then
+                READY[$POD]=1
+                READY_COUNT=$((READY_COUNT + 1))
+                echo "$POD warmup complete"
+              else
+                echo "$POD not ready yet: phase=$PHASE status=$STATUS"
+              fi
+            done
+
+            if [ "$READY_COUNT" -eq "$EXPECTED_REPLICAS" ]; then
+              echo "All backend pods completed warmup"
+              break
+            fi
+
+            NOW=$(date +%s)
+            ELAPSED=$((NOW - STARTED_AT))
+            if [ "$ELAPSED" -ge "$WARMUP_TIMEOUT_SECONDS" ]; then
+              echo "::error::Timed out waiting for backend warmup completion after ${WARMUP_TIMEOUT_SECONDS}s"
+              kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=backend -o wide || true
+              exit 1
+            fi
+
+            sleep 10
+          done
+
+      - name: Probe each backend pod root endpoint
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/repro-results
+          mapfile -t PODS < <(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=backend -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
+          if [ "${#PODS[@]}" -ne "$EXPECTED_REPLICAS" ]; then
+            echo "::error::Expected $EXPECTED_REPLICAS pods but got ${#PODS[@]}"
+            kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=backend -o wide || true
+            exit 1
+          fi
+          FAILURES=0
+          for POD in "${PODS[@]}"; do
+            POD_IP=$(kubectl -n "$NAMESPACE" get pod "$POD" -o jsonpath='{.status.podIP}')
+            echo "Testing $POD at $POD_IP"
+            RAW=$(kubectl -n "$NAMESPACE" exec curl-prober -- sh -c "curl -sS -m 30 --connect-timeout 5 -H 'Content-Type: application/json' --data-binary @/tmp/fume-request.json -w 'HTTPSTATUS:%{http_code}' http://$POD_IP:42420/" 2>/dev/null || true)
+            BODY="${RAW%HTTPSTATUS:*}"
+            STATUS="${RAW##*HTTPSTATUS:}"
+            printf '%s' "$BODY" > "/tmp/repro-results/${POD}.body.json"
+            printf '%s\n' "$STATUS" > "/tmp/repro-results/${POD}.status.txt"
+            kubectl -n "$NAMESPACE" logs "$POD" --tail=400 > "/tmp/repro-results/${POD}.log.txt" || true
+            kubectl -n "$NAMESPACE" describe pod "$POD" > "/tmp/repro-results/${POD}.describe.txt" || true
+            if [ "$STATUS" != "200" ]; then
+              echo "::error::Expected 200 from $POD, got $STATUS"
+              FAILURES=$((FAILURES + 1))
+            fi
+          done
+          if [ "$FAILURES" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Capture cache diagnostics
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cache-diagnostics
+          POD=$(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=backend -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          if [ -n "$POD" ]; then
+            kubectl -n "$NAMESPACE" exec "$POD" -- sh -c 'find /usr/fume/fhir-packages -maxdepth 3 | sort' > /tmp/cache-diagnostics/cache-tree.txt || true
+            kubectl -n "$NAMESPACE" exec "$POD" -- sh -c 'find /usr/fume/fhir-packages/.fpi.cache -maxdepth 3 | sort' > /tmp/cache-diagnostics/fpi-cache-tree.txt || true
+            kubectl -n "$NAMESPACE" exec "$POD" -- sh -c 'test -f /usr/fume/fhir-packages/hl7.fhir.r4.core#4.0.1/package/StructureDefinition-Annotation.json && echo present || echo missing' > /tmp/cache-diagnostics/annotation-status.txt || true
+            kubectl -n "$NAMESPACE" exec "$POD" -- sh -c 'test -f /usr/fume/fhir-packages/hl7.fhir.r4.core#4.0.1/package/.fpi.index.json && cat /usr/fume/fhir-packages/hl7.fhir.r4.core#4.0.1/package/.fpi.index.json' > /tmp/cache-diagnostics/hl7-core-index.json || true
+          fi
+
+      - name: Capture namespace diagnostics
+        if: failure()
+        run: |
+          mkdir -p /tmp/namespace-diagnostics
+          kubectl -n "$NAMESPACE" get pods -o wide > /tmp/namespace-diagnostics/pods.txt || true
+          kubectl -n "$NAMESPACE" get pvc > /tmp/namespace-diagnostics/pvc.txt || true
+          kubectl -n "$NAMESPACE" get events --sort-by=.metadata.creationTimestamp > /tmp/namespace-diagnostics/events.txt || true
+          kubectl -n "$NAMESPACE" describe deployment "$RELEASE_NAME-backend" > /tmp/namespace-diagnostics/deployment.txt || true
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-cache-concurrency-repro
+          path: |
+            /tmp/fume-request.json
+            /tmp/health-checks
+            /tmp/repro-results
+            /tmp/cache-diagnostics
+            /tmp/namespace-diagnostics
+
+      - name: Cleanup namespace
+        if: always()
+        run: kubectl delete namespace "$NAMESPACE" --wait=false || true
