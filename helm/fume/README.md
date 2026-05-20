@@ -614,6 +614,7 @@ env:
   SERVER_PORT: "42420"           # Port the engine exposes (default: 42420)
   FHIR_VERSION: "4.0.1"          # FHIR version (default: 4.0.1)
   FHIR_SERVER_AUTH_TYPE: "NONE"  # BASIC or NONE (default: NONE)
+  FUME_FILE_LOGGING: "false"     # Helm default: stdout-only logging in Kubernetes
 ```
 
 **Required ConfigMap values** (must be provided during deployment):
@@ -918,6 +919,9 @@ kubectl -n fume exec deploy/fume-backend -- printenv NODE_EXTRA_CA_CERTS
 
 ### Logs
 
+Backend file logging is disabled by default in this chart (`env.FUME_FILE_LOGGING=false`).
+Use Kubernetes/container logs as the primary operational source:
+
 ```bash
 # Backend logs
 kubectl logs -l app.kubernetes.io/component=backend --namespace fume -f
@@ -928,6 +932,8 @@ kubectl logs -l app.kubernetes.io/component=frontend --namespace fume -f
 # Previous container logs (if pod crashed)
 kubectl logs -l app.kubernetes.io/component=backend --namespace fume --previous
 ```
+
+If you explicitly override `env.FUME_FILE_LOGGING=true`, you must also mount writable storage for backend logs at `/usr/fume/logs` inside the backend container (the internal path is fixed). A typical approach is to add a PVC-backed `volume` plus a `volumeMount` with `mountPath: /usr/fume/logs` in your backend Deployment customization. This is usually not recommended for standard Kubernetes deployments where platform log aggregation already consumes stdout/stderr.
 
 
 ## Uninstalling

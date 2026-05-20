@@ -103,8 +103,6 @@ spec:
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
           volumeMounts:
-            - name: logs
-              mountPath: /usr/fume/logs
             - name: templates
               mountPath: /usr/fume/templates
             # Writable cache directory for FHIR packages (non-root friendly fixed path)
@@ -145,8 +143,6 @@ spec:
               readOnly: true
             {{- end }}
       volumes:
-        - name: logs
-          emptyDir: {}
         # templates: shared PVC (recommended) or emptyDir
         {{- if .Values.storage.templates.enabled }}
         - name: templates
