@@ -175,6 +175,12 @@
             "silent"
           ]
         },
+        "FUME_FILE_LOGGING": {
+          "type": [
+            "string",
+            "boolean"
+          ]
+        },
         "FUME_EVAL_THROW_LEVEL": {
           "type": "string",
           "pattern": "^[0-9]+$"

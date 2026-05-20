@@ -158,6 +158,9 @@ env:
   SERVER_PORT: "42420"
   FHIR_VERSION: "4.0.1"
   FHIR_SERVER_AUTH_TYPE: "NONE"  # BASIC or NONE
+  # Kubernetes default is stdout/stderr collection via kubectl logs or platform log aggregation.
+  # Disable backend rotating file logs by default in Helm deployments.
+  FUME_FILE_LOGGING: "false"
   
   # Frontend (FUME Designer) variables
   FUME_DESIGNER_HEADLINE: "FUME Designer"
