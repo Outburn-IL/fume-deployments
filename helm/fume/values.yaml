@@ -164,6 +164,7 @@ env:
   
   # Frontend (FUME Designer) variables
   FUME_DESIGNER_HEADLINE: "FUME Designer"
+  FUME_DESIGNER_CACHE_REFRESH_INTERVAL: "30"
   # When auth.enabled=true, the chart auto-sets FUME_DESIGNER_AUTH_ENABLED=true on the designer.
   # Uncomment to override that default (e.g. to keep the designer in public mode while the backend enforces auth).
   # FUME_DESIGNER_AUTH_ENABLED: "false"
