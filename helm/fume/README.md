@@ -639,6 +639,7 @@ Non-secret environment variables (in `values.yaml`; override in `values.prod.yam
 ```yaml
 env:
   FUME_DESIGNER_HEADLINE: "FUME Designer - DEV"  # Page title/environment indicator
+  FUME_DESIGNER_CACHE_REFRESH_INTERVAL: "30"     # Refresh mappings and aliases every 30 seconds; use 0 to disable
 ```
 
 **Required ConfigMap values** (must be provided during deployment):

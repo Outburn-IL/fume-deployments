@@ -243,6 +243,9 @@
         },
         "FUME_DESIGNER_HEADLINE": {
           "type": "string"
+          },
+          "FUME_DESIGNER_CACHE_REFRESH_INTERVAL": {
+            "type": "string"
         }
       },
       "additionalProperties": true

@@ -91,3 +91,4 @@ These values are consumed by the Designer / browser.
 |---|---:|---|---:|---|
 | `FUME_SERVER_URL` | Yes | values.configMap | No | URL that the user's browser uses to call the backend API. Must be reachable from the user's network.
 | `FUME_DESIGNER_HEADLINE` | No | values.env | No | Cosmetic headline / environment marker.
+| `FUME_DESIGNER_CACHE_REFRESH_INTERVAL` | No | values.env | No | Refresh interval in seconds for the Designer's cached mappings and aliases. Default `30`. Set to `0` to disable periodic refresh.
